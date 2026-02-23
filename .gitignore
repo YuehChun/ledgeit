@@ -1,0 +1,51 @@
+# Old AI codebase
+old-ai/
+
+# Claude Code
+.claude/
+
+# Environment variables
+.env
+.env.*
+.env.local
+.env.production
+.env.staging
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets & credentials
+*.pem
+*.key
+token*.json
+oauth_client.json
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
