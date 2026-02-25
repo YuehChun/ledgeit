@@ -1,0 +1,47 @@
+name: LedgeIt
+options:
+  bundleIdPrefix: com.ledgeit
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "7.0.0"
+
+targets:
+  LedgeIt:
+    type: application
+    platform: macOS
+    sources:
+      - LedgeIt
+    dependencies:
+      - package: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ledgeit.app
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_ENTITLEMENTS: LedgeIt/LedgeIt.entitlements
+        INFOPLIST_FILE: LedgeIt/Info.plist
+        PRODUCT_NAME: LedgeIt
+
+  LedgeItTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: LedgeIt
+      - package: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ledgeit.tests
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/LedgeIt.app/Contents/MacOS/LedgeIt"
+        BUNDLE_LOADER: "$(TEST_HOST)"

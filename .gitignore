@@ -22,6 +22,12 @@ out/
 dist/
 build/
 
+# Swift
+.build/
+.swiftpm/
+Package.resolved
+*.xcodeproj/
+
 # Python
 __pycache__/
 *.pyc
