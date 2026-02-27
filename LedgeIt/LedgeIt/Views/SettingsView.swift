@@ -191,7 +191,7 @@ struct SettingsView: View {
                                     Button {
                                         backupToSupabase()
                                     } label: {
-                                        Label("Backup Emails to Supabase", systemImage: "cloud.fill")
+                                        Label("Backup Financial Emails to Supabase", systemImage: "cloud.fill")
                                             .frame(maxWidth: .infinity)
                                     }
                                     .controlSize(.regular)
@@ -416,21 +416,23 @@ struct SettingsView: View {
                 let supabase = try SupabaseService()
 
                 // Test connection first
-                let connected = try await supabase.testConnection()
+                let (connected, detail) = try await supabase.testConnection()
                 guard connected else {
-                    authError = "Failed to connect to Supabase. Check your URL and key."
+                    authError = "Supabase: \(detail)"
                     statusMessage = nil
                     isSyncing = false
                     return
                 }
 
-                // Fetch all local emails
+                // Fetch only financial emails
                 let emails = try await AppDatabase.shared.db.read { db in
-                    try Email.fetchAll(db)
+                    try Email
+                        .filter(Email.Columns.isFinancial == true)
+                        .fetchAll(db)
                 }
 
                 guard !emails.isEmpty else {
-                    statusMessage = "No emails to backup."
+                    statusMessage = "No financial emails to backup."
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { statusMessage = nil }
                     isSyncing = false
                     return

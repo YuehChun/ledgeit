@@ -8,7 +8,6 @@ import os
 final class SyncService {
     let database: AppDatabase
     private var gmailService: GmailService?
-    private var supabaseService: SupabaseService?
 
     var isSyncing: Bool = false
     var syncProgress: String = ""
@@ -18,7 +17,6 @@ final class SyncService {
 
     init(database: AppDatabase) {
         self.database = database
-        self.supabaseService = try? SupabaseService()
     }
 
     func configure(accessTokenProvider: @escaping @Sendable () async throws -> String) {
@@ -271,11 +269,6 @@ final class SyncService {
             if try Email.fetchOne(db, key: email.id) == nil {
                 try email.insert(db)
             }
-        }
-
-        // Upsert to Supabase for cloud backup (best-effort, don't block sync)
-        if let supabase = await supabaseService {
-            try? await supabase.upsertEmail(email)
         }
 
         // Process PDF attachments

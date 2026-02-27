@@ -41,10 +41,14 @@ final class ExtractionPipeline {
 
         totalCount = emails.count
 
+        // Supabase service (optional, best-effort)
+        let supabase = try? SupabaseService()
+        var financialEmails: [Email] = []
+
         // 2. Process each email
         for email in emails {
             do {
-                let transactions = try await processEmail(email)
+                let (transactions, isFinancial) = try await processEmail(email)
 
                 // Dedup: filter out transactions that already exist in DB (same amount + currency + date)
                 let deduped = try await deduplicateTransactions(transactions)
@@ -57,11 +61,20 @@ final class ExtractionPipeline {
                 }
 
                 // Mark email as processed
+                let emailIsFinancial = isFinancial || !deduped.isEmpty
                 try await database.db.write { db in
                     var updated = email
                     updated.isProcessed = true
-                    updated.isFinancial = !deduped.isEmpty
+                    updated.isFinancial = emailIsFinancial
                     try updated.update(db)
+                }
+
+                // Collect financial emails for Supabase
+                if emailIsFinancial {
+                    var finEmail = email
+                    finEmail.isProcessed = true
+                    finEmail.isFinancial = true
+                    financialEmails.append(finEmail)
                 }
 
                 processedCount += 1
@@ -78,7 +91,16 @@ final class ExtractionPipeline {
             }
         }
 
-        // 3. Update SyncState
+        // 3. Upsert financial emails to Supabase (best-effort, batch)
+        if let supabase, !financialEmails.isEmpty {
+            let batchSize = 50
+            for start in stride(from: 0, to: financialEmails.count, by: batchSize) {
+                let end = min(start + batchSize, financialEmails.count)
+                try? await supabase.upsertEmails(Array(financialEmails[start..<end]))
+            }
+        }
+
+        // 4. Update SyncState
         try await database.db.write { [processedCount] db in
             if var syncState = try SyncState.fetchOne(db, key: 1) {
                 syncState.totalEmailsProcessed += processedCount
@@ -89,7 +111,7 @@ final class ExtractionPipeline {
 
     // MARK: - Process Single Email
 
-    func processEmail(_ email: Email) async throws -> [Transaction] {
+    func processEmail(_ email: Email) async throws -> (transactions: [Transaction], isFinancial: Bool) {
         let subject = email.subject ?? ""
         let sender = email.sender ?? ""
 
@@ -172,7 +194,7 @@ final class ExtractionPipeline {
 
         // Step C: If rejected, return empty
         guard finalDecision == .accept else {
-            return []
+            return ([], false)
         }
 
         // Step D-1: Route credit card statements to bill extraction
@@ -201,7 +223,7 @@ final class ExtractionPipeline {
                     }
                 }
             }
-            return []  // Don't extract individual transactions from statement emails
+            return ([], true)  // Financial but no individual transactions
         }
 
         // Step D-2: Extract transactions via LLM
@@ -279,7 +301,7 @@ final class ExtractionPipeline {
             transactions.append(transaction)
         }
 
-        return transactions
+        return (transactions, !transactions.isEmpty)
     }
 
     // MARK: - Deduplication
