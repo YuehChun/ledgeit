@@ -41,10 +41,6 @@ final class ExtractionPipeline {
 
         totalCount = emails.count
 
-        // Supabase service (optional, best-effort)
-        let supabase = try? SupabaseService()
-        var financialEmails: [Email] = []
-
         // 2. Process each email
         for email in emails {
             do {
@@ -69,14 +65,6 @@ final class ExtractionPipeline {
                     try updated.update(db)
                 }
 
-                // Collect financial emails for Supabase
-                if emailIsFinancial {
-                    var finEmail = email
-                    finEmail.isProcessed = true
-                    finEmail.isFinancial = true
-                    financialEmails.append(finEmail)
-                }
-
                 processedCount += 1
 
             } catch {
@@ -91,16 +79,7 @@ final class ExtractionPipeline {
             }
         }
 
-        // 3. Upsert financial emails to Supabase (best-effort, batch)
-        if let supabase, !financialEmails.isEmpty {
-            let batchSize = 50
-            for start in stride(from: 0, to: financialEmails.count, by: batchSize) {
-                let end = min(start + batchSize, financialEmails.count)
-                try? await supabase.upsertEmails(Array(financialEmails[start..<end]))
-            }
-        }
-
-        // 4. Update SyncState
+        // 3. Update SyncState
         try await database.db.write { [processedCount] db in
             if var syncState = try SyncState.fetchOne(db, key: 1) {
                 syncState.totalEmailsProcessed += processedCount

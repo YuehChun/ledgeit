@@ -6,8 +6,6 @@ struct SettingsView: View {
     @State private var openRouterKey: String = ""
     @State private var googleClientID: String = ""
     @State private var googleClientSecret: String = ""
-    @State private var supabaseURL: String = ""
-    @State private var supabaseAnonKey: String = ""
     @State private var authError: String?
     @State private var syncState: SyncState?
     @State private var isConnecting: Bool = false
@@ -72,26 +70,6 @@ struct SettingsView: View {
                             }
                         }
 
-                        SettingsSection(title: "Supabase (Cloud Backup)", icon: "cloud.fill", color: .orange) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                FieldGroup(label: "Project URL") {
-                                    TextField("https://xxxxx.supabase.co", text: $supabaseURL)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
-                                }
-                                FieldGroup(label: "Anon Key") {
-                                    SecureField("eyJhbGciOiJ...", text: $supabaseAnonKey)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
-                                }
-                                HStack(spacing: 4) {
-                                    Image(systemName: "info.circle")
-                                    Text("Emails will be backed up to Supabase after each sync.")
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            }
-                        }
                     }
                     .frame(maxWidth: .infinity)
 
@@ -187,17 +165,6 @@ struct SettingsView: View {
                                     .disabled(isSyncing)
                                 }
 
-                                if !supabaseURL.isEmpty && !supabaseAnonKey.isEmpty {
-                                    Button {
-                                        backupToSupabase()
-                                    } label: {
-                                        Label("Backup Financial Emails to Supabase", systemImage: "cloud.fill")
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .controlSize(.regular)
-                                    .disabled(isSyncing)
-                                }
-
                                 Button(role: .destructive) {
                                     authService.signOut()
                                     statusMessage = nil
@@ -254,12 +221,6 @@ struct SettingsView: View {
                 }
                 if !googleClientSecret.isEmpty {
                     try KeychainService.save(key: .googleClientSecret, value: googleClientSecret)
-                }
-                if !supabaseURL.isEmpty {
-                    try KeychainService.save(key: .supabaseURL, value: supabaseURL)
-                }
-                if !supabaseAnonKey.isEmpty {
-                    try KeychainService.save(key: .supabaseAnonKey, value: supabaseAnonKey)
                 }
                 onKeySaved?()
             } catch {
@@ -402,72 +363,12 @@ struct SettingsView: View {
         }
     }
 
-    private func backupToSupabase() {
-        Task {
-            isSyncing = true
-            authError = nil
-            statusMessage = "Backing up emails to Supabase..."
-
-            do {
-                // Save credentials first
-                try KeychainService.save(key: .supabaseURL, value: supabaseURL)
-                try KeychainService.save(key: .supabaseAnonKey, value: supabaseAnonKey)
-
-                let supabase = try SupabaseService()
-
-                // Test connection first
-                let (connected, detail) = try await supabase.testConnection()
-                guard connected else {
-                    authError = "Supabase: \(detail)"
-                    statusMessage = nil
-                    isSyncing = false
-                    return
-                }
-
-                // Fetch only financial emails
-                let emails = try await AppDatabase.shared.db.read { db in
-                    try Email
-                        .filter(Email.Columns.isFinancial == true)
-                        .fetchAll(db)
-                }
-
-                guard !emails.isEmpty else {
-                    statusMessage = "No financial emails to backup."
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { statusMessage = nil }
-                    isSyncing = false
-                    return
-                }
-
-                // Batch upsert in chunks of 50
-                let batchSize = 50
-                var uploaded = 0
-                for start in stride(from: 0, to: emails.count, by: batchSize) {
-                    let end = min(start + batchSize, emails.count)
-                    let batch = Array(emails[start..<end])
-                    try await supabase.upsertEmails(batch)
-                    uploaded += batch.count
-                    statusMessage = "Uploading \(uploaded)/\(emails.count) emails..."
-                }
-
-                statusMessage = "Backup complete! \(emails.count) emails synced to Supabase."
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { statusMessage = nil }
-            } catch {
-                authError = "Supabase backup failed: \(error.localizedDescription)"
-                statusMessage = nil
-            }
-
-            isSyncing = false
-        }
-    }
-
     // MARK: - Data
 
     private func loadSettings() {
         openRouterKey = KeychainService.load(key: .openRouterAPIKey) ?? ""
         googleClientID = KeychainService.load(key: .googleClientID) ?? ""
         googleClientSecret = KeychainService.load(key: .googleClientSecret) ?? ""
-        supabaseURL = KeychainService.load(key: .supabaseURL) ?? ""
-        supabaseAnonKey = KeychainService.load(key: .supabaseAnonKey) ?? ""
         loadSyncState()
     }
 

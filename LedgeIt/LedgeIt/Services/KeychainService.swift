@@ -14,8 +14,6 @@ enum KeychainService: Sendable {
         case googleClientSecret = "google_client_secret"
         case googleAccessToken = "google_access_token"
         case googleRefreshToken = "google_refresh_token"
-        case supabaseURL = "supabase_url"
-        case supabaseAnonKey = "supabase_anon_key"
     }
 
     static func save(key: Key, value: String) throws {

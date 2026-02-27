@@ -10,8 +10,7 @@ A native macOS app that automatically extracts financial transactions from your 
 4. **Credit Card Bills** — Detects statement emails and tracks due dates / amounts owed
 5. **Auto-Categorization** — 15 spending categories with subcategories (food, transport, utilities, etc.)
 6. **Calendar Sync** — Creates Google Calendar events for each transaction
-7. **Cloud Backup** — Optional Supabase integration to back up financial emails
-8. **Auto-Sync** — Background sync every 15 minutes when the app is running
+7. **Auto-Sync** — Background sync every 15 minutes when the app is running
 
 ## Screenshots
 
@@ -32,7 +31,6 @@ The app has 5 main views accessible from the sidebar:
 | Database | SQLite via [GRDB](https://github.com/groue/GRDB.swift) 7.0 |
 | AI/LLM | [OpenRouter](https://openrouter.ai) API (Claude, GPT, etc.) |
 | Auth | Google OAuth 2.0 (Desktop app flow) |
-| Cloud | Supabase REST API (optional, no SDK) |
 | Package Manager | Swift Package Manager |
 | Secrets | macOS Keychain |
 
@@ -58,7 +56,6 @@ credit_card_bills table ──► DashboardView (upcoming bills), CalendarView (
   │
   ▼
 CalendarService ──► Google Calendar (payment events)
-SupabaseService ──► Supabase (financial email cloud backup)
 ```
 
 ## Project Structure
@@ -90,7 +87,6 @@ LedgeIt/
 │   │   ├── SyncService.swift         # Email sync orchestration
 │   │   ├── CalendarService.swift     # Google Calendar API
 │   │   ├── OpenRouterService.swift   # LLM API client
-│   │   ├── SupabaseService.swift     # Cloud backup (REST, no SDK)
 │   │   ├── PersonalFinanceService.swift # Dashboard data queries
 │   │   ├── KeychainService.swift     # Secure credential storage
 │   │   └── PDFParserService.swift    # PDF text extraction
@@ -145,8 +141,7 @@ swift build -c release
 1. Open **Settings** (sidebar or Cmd+,)
 2. Enter your Google Client ID and Client Secret
 3. Enter your OpenRouter API key
-4. (Optional) Enter Supabase URL and Anon Key for cloud backup
-5. Click **Save & Connect Google** — this opens the OAuth flow in your browser
+4. Click **Save & Connect Google** — this opens the OAuth flow in your browser
 6. Once connected, the app automatically syncs and processes emails
 
 ### Install to Applications
@@ -182,39 +177,6 @@ For accepted emails, the LLM extracts structured transaction data:
 
 For credit card statements, a separate prompt extracts:
 - Bank name, due date, amount due, currency, statement period
-
-## Supabase Setup (Optional)
-
-To enable cloud backup of financial emails:
-
-1. Create a Supabase project
-2. Run this SQL in the SQL Editor:
-
-```sql
-CREATE TABLE emails (
-    id TEXT PRIMARY KEY,
-    thread_id TEXT,
-    subject TEXT,
-    sender TEXT,
-    date TEXT,
-    snippet TEXT,
-    body_text TEXT,
-    body_html TEXT,
-    labels TEXT,
-    is_financial BOOLEAN NOT NULL DEFAULT FALSE,
-    is_processed BOOLEAN NOT NULL DEFAULT FALSE,
-    classification_result TEXT,
-    created_at TEXT DEFAULT NOW()::TEXT
-);
-
-ALTER TABLE emails ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon full access" ON emails
-    FOR ALL USING (true) WITH CHECK (true);
-```
-
-3. Enter your project URL and Anon Key in Settings
-
-Only emails classified as financial are synced to Supabase.
 
 ## License
 
