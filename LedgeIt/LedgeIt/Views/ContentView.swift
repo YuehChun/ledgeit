@@ -6,6 +6,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case transactions = "Transactions"
     case emails = "Emails"
     case calendar = "Calendar"
+    case analysis = "Analysis"
+    case goals = "Goals"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -16,6 +18,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .transactions: return "creditcard.fill"
         case .emails: return "envelope.fill"
         case .calendar: return "calendar"
+        case .analysis: return "chart.bar.doc.horizontal.fill"
+        case .goals: return "target"
         case .settings: return "gearshape.fill"
         }
     }
@@ -63,6 +67,10 @@ struct ContentView: View {
                         EmailListView()
                     case .calendar:
                         CalendarView()
+                    case .analysis:
+                        AnalysisDashboardView()
+                    case .goals:
+                        GoalsView()
                     case .settings:
                         SettingsView(onKeySaved: {
                             checkApiKeys()
