@@ -9,7 +9,7 @@ struct AnalysisDashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 headerSection
 
                 if let report {
@@ -119,8 +119,8 @@ struct AnalysisDashboardView: View {
                         .font(.subheadline).fontWeight(.semibold).foregroundStyle(.green)
                     ForEach(advice.positiveHabits, id: \.self) { habit in
                         HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                            Text(habit).font(.caption).fixedSize(horizontal: false, vertical: true)
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.callout)
+                            Text(habit).font(.callout).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -135,16 +135,16 @@ struct AnalysisDashboardView: View {
                     .font(.subheadline).fontWeight(.semibold).foregroundStyle(.blue)
                 ForEach(advice.actionItems, id: \.self) { item in
                     HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "arrow.right.circle.fill").foregroundStyle(.blue).font(.caption)
-                        Text(item).font(.caption).fixedSize(horizontal: false, vertical: true)
+                        Image(systemName: "arrow.right.circle.fill").foregroundStyle(.blue).font(.callout)
+                        Text(item).font(.callout).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if !advice.concerns.isEmpty {
                     Divider()
                     ForEach(advice.concerns, id: \.self) { concern in
                         HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption)
-                            Text(concern).font(.caption).fixedSize(horizontal: false, vertical: true)
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.callout)
+                            Text(concern).font(.callout).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -187,37 +187,44 @@ struct AnalysisDashboardView: View {
     // MARK: - Category Insights
 
     private func categoryInsightsSection(_ insights: [FinancialAdvisor.CategoryInsight]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Category Insights").font(.headline)
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Category Insights", systemImage: "chart.pie.fill")
+                .font(.headline)
             ForEach(insights, id: \.category) { insight in
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(CategoryStyle.style(forRawCategory: insight.category).displayName)
-                            .font(.callout).fontWeight(.medium)
+                            .font(.callout).fontWeight(.semibold)
                         Spacer()
                     }
                     Text(insight.assessment)
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let suggestion = insight.suggestion {
-                        Text(suggestion)
-                            .font(.caption).foregroundStyle(.blue)
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "lightbulb.fill").foregroundStyle(.yellow).font(.caption)
+                            Text(suggestion)
+                                .font(.callout).foregroundStyle(.blue)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
-                .padding(10)
+                .padding(12)
                 .background(.background.tertiary)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
-        .padding(14)
+        .padding(16)
         .background(.background.secondary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Savings Trend
 
     private func savingsTrendChart(_ trends: [SpendingAnalyzer.MonthTrend]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Savings Rate Trend").font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Savings Rate Trend", systemImage: "chart.line.uptrend.xyaxis")
+                .font(.headline)
             Chart(trends) { trend in
                 LineMark(
                     x: .value("Month", trend.label),
@@ -225,20 +232,31 @@ struct AnalysisDashboardView: View {
                 )
                 .foregroundStyle(.green)
                 .symbol(Circle())
+                .interpolationMethod(.catmullRom)
+
+                PointMark(
+                    x: .value("Month", trend.label),
+                    y: .value("Rate", trend.savingsRate * 100)
+                )
+                .foregroundStyle(.green)
+                .annotation(position: .top) {
+                    Text("\(String(format: "%.0f", trend.savingsRate * 100))%")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
 
                 RuleMark(y: .value("Target", 20))
                     .foregroundStyle(.orange.opacity(0.5))
                     .lineStyle(StrokeStyle(dash: [5, 5]))
             }
             .chartYAxisLabel("Savings Rate %")
-            .frame(height: 180)
+            .frame(height: 240)
 
             Text("Dashed line = 20% savings target")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.caption).foregroundStyle(.tertiary)
         }
-        .padding(14)
+        .padding(16)
         .background(.background.secondary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Empty State
