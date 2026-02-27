@@ -1,4 +1,5 @@
 import SwiftUI
+import GRDB
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
@@ -23,6 +24,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @State private var selectedItem: SidebarItem? = .dashboard
     @State private var hasApiKeys = false
+    @State private var autoSyncStatus: String?
+    @State private var syncTimer: Timer?
+
+    private let autoSyncInterval: TimeInterval = 15 * 60 // 15 minutes
 
     var body: some View {
         NavigationSplitView {
@@ -32,6 +37,18 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
             .listStyle(.sidebar)
+
+            if let status = autoSyncStatus {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
         } detail: {
             Group {
                 if !hasApiKeys && selectedItem != .settings {
@@ -47,7 +64,10 @@ struct ContentView: View {
                     case .calendar:
                         CalendarView()
                     case .settings:
-                        SettingsView(onKeySaved: { checkApiKeys() })
+                        SettingsView(onKeySaved: {
+                            checkApiKeys()
+                            triggerAutoSync()
+                        })
                     case nil:
                         Text("Select an item from the sidebar")
                             .foregroundStyle(.secondary)
@@ -56,13 +76,76 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 960, minHeight: 640)
-        .onAppear { checkApiKeys() }
+        .onAppear {
+            checkApiKeys()
+            triggerAutoSync()
+            startSyncTimer()
+        }
+        .onDisappear {
+            syncTimer?.invalidate()
+        }
     }
 
     private func checkApiKeys() {
         let clientId = KeychainService.load(key: .googleClientID) ?? ""
         let clientSecret = KeychainService.load(key: .googleClientSecret) ?? ""
         hasApiKeys = !clientId.isEmpty && !clientSecret.isEmpty
+    }
+
+    private func startSyncTimer() {
+        syncTimer?.invalidate()
+        syncTimer = Timer.scheduledTimer(withTimeInterval: autoSyncInterval, repeats: true) { _ in
+            Task { @MainActor in
+                triggerAutoSync()
+            }
+        }
+    }
+
+    private func triggerAutoSync() {
+        let authService = GoogleAuthService()
+        guard authService.isSignedIn else { return }
+
+        Task {
+            await performAutoSync(authService: authService)
+        }
+    }
+
+    private func performAutoSync(authService: GoogleAuthService) async {
+        let database = AppDatabase.shared
+
+        // 1. Incremental sync
+        do {
+            autoSyncStatus = "Syncing emails..."
+            let syncService = SyncService(database: database)
+            syncService.configure {
+                try await authService.getValidAccessToken()
+            }
+            try await syncService.performIncrementalSync()
+        } catch {
+            autoSyncStatus = nil
+            return
+        }
+
+        // 2. Process unprocessed emails
+        do {
+            let unprocessed = try await database.db.read { db in
+                try Email.filter(Email.Columns.isProcessed == false).fetchCount(db)
+            }
+            guard unprocessed > 0 else {
+                autoSyncStatus = nil
+                return
+            }
+
+            autoSyncStatus = "Processing \(unprocessed) emails..."
+            let openRouter = try OpenRouterService()
+            let llm = LLMProcessor(openRouter: openRouter)
+            let pipeline = ExtractionPipeline(database: database, llmProcessor: llm)
+            try await pipeline.processUnprocessedEmails()
+        } catch {
+            // Processing errors are non-fatal
+        }
+
+        autoSyncStatus = nil
     }
 }
 
