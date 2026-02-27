@@ -23,28 +23,36 @@ struct SupabaseService: Sendable {
         self.anonKey = key
     }
 
+    private func makeHeaders() -> [(String, String)] {
+        [
+            ("Content-Type", "application/json"),
+            ("apikey", anonKey),
+            ("Authorization", "Bearer \(anonKey)"),
+        ]
+    }
+
     /// Upsert a single email to Supabase.
     func upsertEmail(_ email: Email) async throws {
+        let payload = emailToDict(email)
+        let data = try JSONSerialization.data(withJSONObject: payload)
+
         let url = baseURL.appendingPathComponent("rest/v1/emails")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
-        // Upsert: on conflict with primary key (id), merge the new data
+        for (key, value) in makeHeaders() {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        request.httpBody = data
 
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        request.httpBody = try encoder.encode(email)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (respData, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            logger.error("Supabase upsert failed: HTTP \(statusCode)")
-            throw SupabaseServiceError.upsertFailed(statusCode)
+            let body = String(data: respData, encoding: .utf8) ?? ""
+            logger.error("Supabase upsert failed: HTTP \(statusCode) - \(body)")
+            throw SupabaseServiceError.requestFailed(statusCode, body)
         }
     }
 
@@ -52,32 +60,34 @@ struct SupabaseService: Sendable {
     func upsertEmails(_ emails: [Email]) async throws {
         guard !emails.isEmpty else { return }
 
+        let payload = emails.map { emailToDict($0) }
+        let data = try JSONSerialization.data(withJSONObject: payload)
+
         let url = baseURL.appendingPathComponent("rest/v1/emails")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        for (key, value) in makeHeaders() {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        request.httpBody = data
 
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        request.httpBody = try encoder.encode(emails)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (respData, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            logger.error("Supabase batch upsert failed: HTTP \(statusCode)")
-            throw SupabaseServiceError.upsertFailed(statusCode)
+            let body = String(data: respData, encoding: .utf8) ?? ""
+            logger.error("Supabase batch upsert failed: HTTP \(statusCode) - \(body)")
+            throw SupabaseServiceError.requestFailed(statusCode, body)
         }
 
         logger.info("Upserted \(emails.count) emails to Supabase")
     }
 
-    /// Check if connection is valid by querying the emails table (limit 0).
-    func testConnection() async throws -> Bool {
+    /// Check if connection and emails table are accessible.
+    func testConnection() async throws -> (Bool, String) {
+        // Query emails table with limit=0 to check both auth and table existence
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/emails"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "id"),
@@ -86,23 +96,62 @@ struct SupabaseService: Sendable {
 
         var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        for (key, value) in makeHeaders() {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            return false
+            return (false, "No response from Supabase")
         }
-        return (200...299).contains(httpResponse.statusCode)
+
+        let body = String(data: data, encoding: .utf8) ?? ""
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            return (true, "Connected")
+        case 401:
+            return (false, "Invalid Anon Key (HTTP 401)")
+        case 404:
+            return (false, "Table 'emails' not found. Create it in Supabase SQL Editor.")
+        default:
+            // PostgREST returns JSON with "message" field on errors
+            if body.contains("relation") && body.contains("does not exist") {
+                return (false, "Table 'emails' not found. Create it in Supabase SQL Editor.")
+            }
+            return (false, "HTTP \(httpResponse.statusCode): \(String(body.prefix(300)))")
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Convert Email to a dictionary for JSON serialization.
+    /// All keys must always be present (PostgREST requires matching keys in batch upserts).
+    private func emailToDict(_ email: Email) -> [String: Any] {
+        func val(_ s: String?) -> Any { s ?? NSNull() }
+        return [
+            "id": email.id,
+            "thread_id": val(email.threadId),
+            "subject": val(email.subject),
+            "sender": val(email.sender),
+            "date": val(email.date),
+            "snippet": val(email.snippet),
+            "body_text": val(email.bodyText),
+            "body_html": val(email.bodyHtml),
+            "labels": val(email.labels),
+            "is_financial": email.isFinancial,
+            "is_processed": email.isProcessed,
+            "classification_result": val(email.classificationResult),
+            "created_at": val(email.createdAt),
+        ]
     }
 }
 
 enum SupabaseServiceError: LocalizedError {
     case missingURL
     case missingAnonKey
-    case upsertFailed(Int)
+    case requestFailed(Int, String)
 
     var errorDescription: String? {
         switch self {
@@ -110,8 +159,9 @@ enum SupabaseServiceError: LocalizedError {
             return "Supabase URL is not configured."
         case .missingAnonKey:
             return "Supabase Anon Key is not configured."
-        case .upsertFailed(let code):
-            return "Supabase upsert failed with HTTP \(code)."
+        case .requestFailed(let code, let body):
+            let detail = body.prefix(300)
+            return "Supabase HTTP \(code): \(detail)"
         }
     }
 }
