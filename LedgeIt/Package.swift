@@ -14,7 +14,10 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
             path: "LedgeIt",
-            exclude: ["Info.plist", "LedgeIt.entitlements"]
+            exclude: ["Info.plist", "LedgeIt.entitlements"],
+            resources: [
+                .process("Assets.xcassets"),
+            ]
         ),
         .testTarget(
             name: "LedgeItTests",
