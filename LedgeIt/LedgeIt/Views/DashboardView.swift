@@ -8,6 +8,7 @@ struct DashboardView: View {
     @State private var recentTransactions: [Transaction] = []
     @State private var recurringPayments: [PersonalFinanceService.RecurringPayment] = []
     @State private var spendingVelocity: PersonalFinanceService.SpendingVelocity?
+    @State private var upcomingBills: [CreditCardBill] = []
     @State private var spendingAnalysis: LLMProcessor.SpendingAnalysis?
     @State private var isAnalyzing = false
     @State private var analysisError: String?
@@ -23,6 +24,11 @@ struct DashboardView: View {
 
                     if let velocity = spendingVelocity, velocity.isAlert {
                         velocityAlertBanner(velocity)
+                    }
+
+                    // Upcoming bills
+                    if !upcomingBills.isEmpty {
+                        upcomingBillsSection
                     }
 
                     // Charts row
@@ -101,6 +107,7 @@ struct DashboardView: View {
             recentTransactions = try service.getRecentTransactions(limit: 10)
             recurringPayments = try service.detectRecurringPayments()
             spendingVelocity = try service.getSpendingVelocity()
+            upcomingBills = try service.getUpcomingBills()
 
             if let topCurrency = recentTransactions.first?.currency {
                 primaryCurrency = topCurrency
@@ -316,6 +323,108 @@ struct DashboardView: View {
                 analysisError = "Analysis failed: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: - Upcoming Bills
+
+    private var upcomingBillsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "creditcard.fill")
+                    .foregroundStyle(.orange)
+                Text("Upcoming Bills")
+                    .font(.headline)
+                Spacer()
+            }
+
+            VStack(spacing: 4) {
+                ForEach(upcomingBills) { bill in
+                    HStack(spacing: 12) {
+                        Image(systemName: "building.columns.fill")
+                            .foregroundStyle(Color(red: 0.78, green: 0.18, blue: 0.18))
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(bill.bankName)
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Due \(formatDueDate(bill.dueDate))")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if bill.isPaid {
+                            Text("PAID")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.green, in: Capsule())
+                        } else if let days = daysUntilDue(bill.dueDate) {
+                            if days < 0 {
+                                Text("OVERDUE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(.red, in: Capsule())
+                            } else {
+                                Text("\(days)d")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(days <= 3 ? .red : days <= 7 ? .orange : .secondary)
+                            }
+                        }
+
+                        Text("\(bill.currency) \(String(format: "%.0f", bill.amountDue))")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+
+                        if !bill.isPaid {
+                            Button {
+                                if let id = bill.id {
+                                    let service = PersonalFinanceService(database: AppDatabase.shared)
+                                    try? service.markBillAsPaid(id)
+                                    loadData()
+                                }
+                            } label: {
+                                Image(systemName: "checkmark.circle")
+                                    .foregroundStyle(.green)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        !bill.isPaid && (daysUntilDue(bill.dueDate).map { $0 < 0 } ?? false)
+                            ? Color.red.opacity(0.08) : Color.clear
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+        }
+        .padding(14)
+        .background(.background.secondary)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func formatDueDate(_ dateStr: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateStr) else { return dateStr }
+        let display = DateFormatter()
+        display.dateFormat = "MMM d"
+        return display.string(from: date)
+    }
+
+    private func daysUntilDue(_ dateStr: String) -> Int? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let dueDate = formatter.date(from: dateStr) else { return nil }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let due = cal.startOfDay(for: dueDate)
+        return cal.dateComponents([.day], from: today, to: due).day
     }
 
     // MARK: - Recurring Payments

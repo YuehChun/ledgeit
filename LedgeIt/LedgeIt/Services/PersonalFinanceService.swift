@@ -248,6 +248,54 @@ final class PersonalFinanceService: Sendable {
         }
     }
 
+    // MARK: - Credit Card Bills
+
+    func getUpcomingBills() throws -> [CreditCardBill] {
+        try database.db.read { db in
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let today = formatter.string(from: Date())
+            let calendar = Calendar.current
+            let twoMonthsOut = calendar.date(byAdding: .month, value: 2, to: Date()) ?? Date()
+            let futureDate = formatter.string(from: twoMonthsOut)
+
+            // Show: unpaid bills (even overdue) + upcoming bills within 2 months
+            return try CreditCardBill
+                .filter(
+                    (CreditCardBill.Columns.isPaid == false) ||
+                    (CreditCardBill.Columns.dueDate >= today && CreditCardBill.Columns.dueDate <= futureDate)
+                )
+                .order(CreditCardBill.Columns.dueDate.asc)
+                .fetchAll(db)
+        }
+    }
+
+    func getBillsForMonth(year: Int, month: Int) throws -> [CreditCardBill] {
+        try database.db.read { db in
+            let startDate = String(format: "%04d-%02d-01", year, month)
+            let endDate: String
+            if month == 12 {
+                endDate = String(format: "%04d-01-01", year + 1)
+            } else {
+                endDate = String(format: "%04d-%02d-01", year, month + 1)
+            }
+            return try CreditCardBill
+                .filter(CreditCardBill.Columns.dueDate >= startDate)
+                .filter(CreditCardBill.Columns.dueDate < endDate)
+                .order(CreditCardBill.Columns.dueDate.asc)
+                .fetchAll(db)
+        }
+    }
+
+    func markBillAsPaid(_ billId: Int64, paid: Bool = true) throws {
+        try database.db.write { db in
+            if var bill = try CreditCardBill.fetchOne(db, key: billId) {
+                bill.isPaid = paid
+                try bill.update(db)
+            }
+        }
+    }
+
     func getAllTransactions(category: String? = nil, searchText: String? = nil) throws -> [Transaction] {
         try database.db.read { db in
             var query = Transaction.all()

@@ -6,6 +6,8 @@ struct CalendarView: View {
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()
     @State private var cancellable: AnyDatabaseCancellable?
+    @State private var bills: [CreditCardBill] = []
+    @State private var billCancellable: AnyDatabaseCancellable?
 
     private let calendar = Calendar.current
     private let dayFormatter: DateFormatter = {
@@ -28,6 +30,10 @@ struct CalendarView: View {
         Dictionary(grouping: transactions) { tx in
             tx.transactionDate ?? ""
         }
+    }
+
+    private var billsByDate: [String: [CreditCardBill]] {
+        Dictionary(grouping: bills, by: { $0.dueDate })
     }
 
     private var datesWithTransactions: Set<String> {
@@ -81,7 +87,7 @@ struct CalendarView: View {
         }
         .navigationTitle("Calendar")
         .onAppear { startObservation() }
-        .onDisappear { cancellable?.cancel() }
+        .onDisappear { cancellable?.cancel(); billCancellable?.cancel() }
     }
 
     // MARK: - Header Bar
@@ -192,18 +198,34 @@ struct CalendarView: View {
                             .fontWeight(isToday ? .bold : .regular)
                             .foregroundStyle(isSelected ? .white : isToday ? .blue : .primary)
 
-                        if hasTxns {
-                            let txns = transactionsByDate[dateStr] ?? []
-                            let uniqueCats = Array(Set(txns.compactMap(\.category))).prefix(3)
-                            HStack(spacing: 2) {
+                        HStack(spacing: 2) {
+                            if hasTxns {
+                                let txns = transactionsByDate[dateStr] ?? []
+                                let uniqueCats = Array(Set(txns.compactMap(\.category))).prefix(3)
                                 ForEach(Array(uniqueCats.enumerated()), id: \.offset) { _, cat in
                                     Circle()
                                         .fill(isSelected ? .white.opacity(0.8) : CategoryStyle.style(forRawCategory: cat).color)
                                         .frame(width: 4, height: 4)
                                 }
                             }
-                        } else {
-                            Color.clear.frame(height: 4)
+                            if let dayBills = billsByDate[dateStr], !dayBills.isEmpty {
+                                let billColor: Color = {
+                                    if dayBills.allSatisfy({ $0.isPaid }) { return .green }
+                                    let fmt = DateFormatter()
+                                    fmt.dateFormat = "yyyy-MM-dd"
+                                    if let d = fmt.date(from: dateStr),
+                                       d < Calendar.current.startOfDay(for: Date()) { return .red }
+                                    return .orange
+                                }()
+                                Image(systemName: "creditcard.fill")
+                                    .font(.system(size: 5))
+                                    .foregroundStyle(isSelected ? .white.opacity(0.8) : billColor)
+                            }
+                        }
+                        .frame(height: 4)
+
+                        if !hasTxns && billsByDate[dateStr] == nil {
+                            Color.clear.frame(height: 0)
                         }
                     }
                     .frame(width: size, height: size)
@@ -246,7 +268,11 @@ struct CalendarView: View {
 
             Divider()
 
-            if selectedDateTransactions.isEmpty {
+            let dateStr = dayFormatter.string(from: selectedDate)
+            let dayBills = billsByDate[dateStr] ?? []
+            let hasContent = !selectedDateTransactions.isEmpty || !dayBills.isEmpty
+
+            if !hasContent {
                 Spacer()
                 HStack {
                     Spacer()
@@ -264,6 +290,40 @@ struct CalendarView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
+                        // Due date bills
+                        if !dayBills.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Payment Due")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.orange)
+
+                                ForEach(dayBills) { bill in
+                                    HStack {
+                                        Image(systemName: "creditcard.fill")
+                                            .foregroundStyle(.orange)
+                                            .frame(width: 20)
+                                        Text(bill.bankName)
+                                            .font(.system(size: 13, weight: .medium))
+                                        Spacer()
+                                        if bill.isPaid {
+                                            Text("PAID")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 1)
+                                                .background(.green, in: Capsule())
+                                        }
+                                        Text("\(bill.currency) \(String(format: "%.0f", bill.amountDue))")
+                                            .font(.system(size: 12, design: .monospaced))
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+
+                            Divider()
+                        }
+
                         ForEach(selectedDateTransactions) { tx in
                             HStack(spacing: 10) {
                                 if let cat = tx.category {
@@ -357,6 +417,21 @@ struct CalendarView: View {
             print("Calendar observation error: \(error)")
         } onChange: { newTransactions in
             transactions = newTransactions
+        }
+
+        let billObservation = ValueObservation.tracking { db -> [CreditCardBill] in
+            try CreditCardBill
+                .order(CreditCardBill.Columns.dueDate.asc)
+                .fetchAll(db)
+        }
+
+        billCancellable = billObservation.start(
+            in: AppDatabase.shared.db,
+            scheduling: .immediate
+        ) { error in
+            print("Bill observation error: \(error)")
+        } onChange: { newBills in
+            bills = newBills
         }
     }
 }

@@ -38,6 +38,7 @@ final class AppDatabase: Sendable {
 
     func resetDatabase() throws {
         try db.write { db in
+            try db.execute(sql: "DELETE FROM credit_card_bills")
             try db.execute(sql: "DELETE FROM calendar_events")
             try db.execute(sql: "DELETE FROM transactions")
             try db.execute(sql: "DELETE FROM attachments")

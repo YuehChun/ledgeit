@@ -99,16 +99,14 @@ struct DatabaseMigrations {
                 )
                 """)
 
-            // Remove credit card bill totals and bank payment notifications
-            // that duplicate individual card transactions
+            // Note: credit card statement emails are now routed to credit_card_bills table
+            // instead of being deleted. Only auto-pay notifications are still cleaned up.
             try db.execute(sql: """
                 DELETE FROM transactions
                 WHERE merchant LIKE '%銀行%'
                 AND (
-                    description LIKE '%本期應繳%'
-                    OR description LIKE '%自動扣繳%'
+                    description LIKE '%自動扣繳%'
                     OR description LIKE '%扣款失敗%'
-                    OR description LIKE '%credit card bill%'
                 )
                 """)
 
@@ -117,6 +115,23 @@ struct DatabaseMigrations {
                 DELETE FROM calendar_events
                 WHERE transaction_id NOT IN (SELECT id FROM transactions)
                 """)
+        }
+
+        // MARK: - v4: Credit card bills table
+        migrator.registerMigration("v4") { db in
+            try db.create(table: "credit_card_bills") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("email_id", .text).references("emails", onDelete: .setNull)
+                t.column("bank_name", .text).notNull()
+                t.column("due_date", .text).notNull()
+                t.column("amount_due", .double).notNull()
+                t.column("currency", .text).notNull().defaults(to: "TWD")
+                t.column("statement_period", .text)
+                t.column("is_paid", .integer).notNull().defaults(to: false)
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+            try db.create(index: "idx_credit_card_bills_due_date", on: "credit_card_bills", columns: ["due_date"])
+            try db.create(index: "idx_credit_card_bills_bank_name", on: "credit_card_bills", columns: ["bank_name"])
         }
     }
 }

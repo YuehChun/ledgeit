@@ -59,6 +59,22 @@ struct LLMProcessor: Sendable {
         }
     }
 
+    struct BillExtractionResult: Codable, Sendable {
+        let bankName: String?
+        let dueDate: String?
+        let amountDue: Double?
+        let currency: String?
+        let statementPeriod: String?
+
+        enum CodingKeys: String, CodingKey {
+            case bankName = "bank_name"
+            case dueDate = "due_date"
+            case amountDue = "amount_due"
+            case currency
+            case statementPeriod = "statement_period"
+        }
+    }
+
     // MARK: - Properties
 
     let openRouter: OpenRouterService
@@ -184,6 +200,60 @@ struct LLMProcessor: Sendable {
         )
 
         return try parseJSON(response, as: ExtractionResult.self)
+    }
+
+    // MARK: - Credit Card Bill Extraction
+
+    func extractCreditCardBill(
+        subject: String,
+        body: String,
+        sender: String
+    ) async throws -> BillExtractionResult? {
+        let systemPrompt = """
+        You are a credit card statement parser. Extract the payment due date and amount from credit card statement emails. \
+        Return ONLY valid JSON, no markdown or explanation.
+        """
+
+        let truncatedBody = String(body.prefix(4000))
+
+        let userPrompt = """
+        Extract the credit card bill information from this email:
+
+        Subject: \(subject)
+        Sender: \(sender)
+
+        Body:
+        \(truncatedBody)
+
+        Return JSON in this exact format:
+        {
+          "bank_name": "The bank or credit card issuer name",
+          "due_date": "YYYY-MM-DD format payment deadline",
+          "amount_due": 12345.00,
+          "currency": "TWD or USD or other ISO currency code",
+          "statement_period": "YYYY-MM-DD to YYYY-MM-DD or null"
+        }
+
+        Rules:
+        - due_date is the PAYMENT DEADLINE, not the statement date
+        - amount_due is the TOTAL amount due (本期應繳總金額 / total amount due / statement balance)
+        - For Taiwan banks: look for 繳款截止日, 繳款期限, 最後繳款日
+        - For English statements: look for "payment due date", "due by", "pay by"
+        - currency: use TWD for Taiwan dollar (NT$), USD for US dollar, etc.
+        - If you cannot find a due date, return null for due_date
+        """
+
+        let response = try await openRouter.complete(
+            model: PFMConfig.extractionModel,
+            messages: [
+                .system(systemPrompt),
+                .user(userPrompt)
+            ],
+            temperature: PFMConfig.llmTemperature,
+            maxTokens: 300
+        )
+
+        return try parseJSON(response, as: BillExtractionResult.self)
     }
 
     // MARK: - Spending Analysis

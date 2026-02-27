@@ -24,6 +24,7 @@ struct IntentClassifier: Sendable {
         let reasoning: String
         let confidence: Double
         let method: Method
+        var isCreditCardStatement: Bool = false
     }
 
     // MARK: - Public API
@@ -41,6 +42,21 @@ struct IntentClassifier: Sendable {
             senderEmail: senderEmail
         )
 
+        // Detect credit card statement emails
+        let senderEmailLower = senderEmail.lowercased()
+        let isTrustedBank = PFMConfig.trustedFinancialInstitutions.contains { domain in
+            senderEmailLower.contains(domain)
+        }
+        let combinedForStatement = (subject + " " + body).lowercased()
+        let statementKeywords = [
+            "帳單", "繳款", "信用卡帳單", "本期應繳", "繳款截止",
+            "最後繳款日", "繳款期限", "信用卡對帳單",
+            "credit card statement", "payment due", "amount due",
+            "statement balance", "minimum payment due", "pay by",
+            "billing statement", "account statement"
+        ]
+        let isStatement = statementKeywords.contains { combinedForStatement.contains($0) }
+
         switch ruleDecision {
         case .certainAccept:
             return ClassificationResult(
@@ -51,9 +67,24 @@ struct IntentClassifier: Sendable {
                 riskScore: 0,
                 reasoning: reason,
                 confidence: 0.95,
-                method: .ruleBased
+                method: .ruleBased,
+                isCreditCardStatement: isStatement
             )
         case .certainReject:
+            // If it looks like a statement from a bank, override to accept
+            if isStatement && isTrustedBank {
+                return ClassificationResult(
+                    decision: .accept,
+                    transactionIntent: 10,
+                    marketingProbability: 0,
+                    senderReputation: 10,
+                    riskScore: 0,
+                    reasoning: "Credit card statement from trusted bank",
+                    confidence: 0.95,
+                    method: .ruleBased,
+                    isCreditCardStatement: true
+                )
+            }
             return ClassificationResult(
                 decision: .reject,
                 transactionIntent: 0,
@@ -73,7 +104,8 @@ struct IntentClassifier: Sendable {
                 riskScore: 5,
                 reasoning: reason,
                 confidence: 0.5,
-                method: .ruleBased
+                method: .ruleBased,
+                isCreditCardStatement: isStatement
             )
         }
     }

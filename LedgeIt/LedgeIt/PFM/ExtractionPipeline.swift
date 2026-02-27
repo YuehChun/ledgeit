@@ -175,7 +175,36 @@ final class ExtractionPipeline {
             return []
         }
 
-        // Step D: Extract transactions via LLM
+        // Step D-1: Route credit card statements to bill extraction
+        if classification.isCreditCardStatement {
+            if let billResult = try await llmProcessor.extractCreditCardBill(
+                subject: subject,
+                body: fullText,
+                sender: sender
+            ), let dueDate = billResult.dueDate, let amountDue = billResult.amountDue {
+                let bill = CreditCardBill(
+                    emailId: email.id,
+                    bankName: billResult.bankName ?? sender,
+                    dueDate: dueDate,
+                    amountDue: amountDue,
+                    currency: billResult.currency ?? "TWD",
+                    statementPeriod: billResult.statementPeriod
+                )
+                try await database.db.write { [bill] db in
+                    // Deduplicate: skip if same bank + same due date already exists
+                    let existing = try CreditCardBill
+                        .filter(CreditCardBill.Columns.bankName == bill.bankName)
+                        .filter(CreditCardBill.Columns.dueDate == bill.dueDate)
+                        .fetchOne(db)
+                    if existing == nil {
+                        try bill.insert(db)
+                    }
+                }
+            }
+            return []  // Don't extract individual transactions from statement emails
+        }
+
+        // Step D-2: Extract transactions via LLM
         let extractionResult = try await llmProcessor.extractTransactions(
             subject: subject,
             body: fullText,
