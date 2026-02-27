@@ -11,6 +11,7 @@ final class ExtractionPipeline {
     let database: AppDatabase
     let llmProcessor: LLMProcessor
     private let intentClassifier = IntentClassifier()
+    private let pdfExtractor: PDFExtractor
 
     var isProcessing = false
     var processedCount = 0
@@ -21,6 +22,7 @@ final class ExtractionPipeline {
     init(database: AppDatabase, llmProcessor: LLMProcessor) {
         self.database = database
         self.llmProcessor = llmProcessor
+        self.pdfExtractor = PDFExtractor(llmProcessor: llmProcessor)
     }
 
     // MARK: - Process All Unprocessed Emails
@@ -113,6 +115,43 @@ final class ExtractionPipeline {
                 .compactMap(\.extractedText)
             return texts.isEmpty ? nil : texts.joined(separator: "\n---\n")
         }
+
+        // Extract structured financial data from PDF attachments
+        let pdfTransactions: [Transaction] = await {
+            guard let text = attachmentText, !text.isEmpty else { return [] }
+            do {
+                guard let pdfData = try await pdfExtractor.extractFinancialData(
+                    pdfText: text,
+                    emailSubject: subject,
+                    emailSender: sender
+                ) else { return [] }
+
+                let now = ISO8601DateFormatter().string(from: Date())
+                return pdfData.transactions.compactMap { extracted -> Transaction? in
+                    guard let amount = extracted.amount else { return nil }
+                    let category = AutoCategorizer.categorize(
+                        merchant: extracted.merchant,
+                        description: extracted.description,
+                        docType: pdfData.documentType,
+                        amount: amount
+                    )
+                    return Transaction(
+                        emailId: email.id,
+                        amount: amount,
+                        currency: extracted.currency ?? "USD",
+                        merchant: extracted.merchant,
+                        category: category.rawValue,
+                        subcategory: category.dimension,
+                        transactionDate: extracted.date,
+                        description: extracted.description,
+                        type: extracted.type,
+                        createdAt: now
+                    )
+                }
+            } catch {
+                return []
+            }
+        }()
 
         // Extract sender email from "Name <email>" format
         let senderEmail = extractEmail(from: sender)
@@ -280,7 +319,8 @@ final class ExtractionPipeline {
             transactions.append(transaction)
         }
 
-        return (transactions, !transactions.isEmpty)
+        let allTransactions = transactions + pdfTransactions
+        return (allTransactions, !allTransactions.isEmpty)
     }
 
     // MARK: - Deduplication
