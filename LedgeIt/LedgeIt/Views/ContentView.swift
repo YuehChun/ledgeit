@@ -35,9 +35,27 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selectedItem) { item in
-                Label(item.rawValue, systemImage: item.icon)
-                    .tag(item)
+            List(selection: $selectedItem) {
+                Section("Overview") {
+                    Label(SidebarItem.dashboard.rawValue, systemImage: SidebarItem.dashboard.icon)
+                        .tag(SidebarItem.dashboard)
+                }
+                Section("Data") {
+                    ForEach([SidebarItem.transactions, .emails, .calendar], id: \.self) { item in
+                        Label(item.rawValue, systemImage: item.icon)
+                            .tag(item)
+                    }
+                }
+                Section("Analysis") {
+                    ForEach([SidebarItem.analysis, .goals], id: \.self) { item in
+                        Label(item.rawValue, systemImage: item.icon)
+                            .tag(item)
+                    }
+                }
+                Section {
+                    Label(SidebarItem.settings.rawValue, systemImage: SidebarItem.settings.icon)
+                        .tag(SidebarItem.settings)
+                }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
             .listStyle(.sidebar)
