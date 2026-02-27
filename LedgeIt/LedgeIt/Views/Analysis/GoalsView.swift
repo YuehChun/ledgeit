@@ -154,8 +154,12 @@ struct GoalsView: View {
 
     private func updateStatus(_ id: String, _ status: String) {
         Task {
-            let generator = try ReportGenerator(database: AppDatabase.shared, openRouter: OpenRouterService())
-            try await generator.updateGoalStatus(goalId: id, status: status)
+            try await AppDatabase.shared.db.write { db in
+                if var goal = try FinancialGoal.fetchOne(db, key: id) {
+                    goal.status = status
+                    try goal.update(db)
+                }
+            }
         }
     }
 
@@ -185,6 +189,8 @@ struct GoalsView: View {
                 }
                 return try query.order(FinancialGoal.Columns.createdAt.desc).fetchAll(db)
             }
-        } catch {}
+        } catch {
+            print("GoalsView: failed to load goals: \(error.localizedDescription)")
+        }
     }
 }

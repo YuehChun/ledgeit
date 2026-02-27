@@ -20,6 +20,19 @@ struct AnalysisDashboardView: View {
                     }
                     categoryInsightsSection(report.advice.categoryInsights)
                     savingsTrendChart(report.trends)
+                } else if let errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.title).foregroundStyle(.red)
+                        Text("Analysis Failed")
+                            .font(.headline)
+                        Text(errorMessage)
+                            .font(.callout).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Try Again") { generateReport() }
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(.top, 40)
                 } else if !isGenerating {
                     emptyState
                 }
