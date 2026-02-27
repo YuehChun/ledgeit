@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var isConnecting: Bool = false
     @State private var isSyncing: Bool = false
     @State private var statusMessage: String?
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
 
     var onKeySaved: (() -> Void)?
 
@@ -19,10 +21,10 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Settings")
+                    Text(l10n.settings)
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text("Configure credentials, connect your Google account, and sync emails.")
+                    Text(l10n.settingsSubtitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -33,37 +35,55 @@ struct SettingsView: View {
                 HStack(alignment: .top, spacing: 16) {
                     // Left column: API credentials
                     VStack(spacing: 16) {
-                        SettingsSection(title: "Google Cloud Platform", icon: "cloud.fill", color: .blue) {
+                        SettingsSection(title: l10n.language, icon: "globe", color: .orange) {
                             VStack(alignment: .leading, spacing: 10) {
-                                FieldGroup(label: "Client ID") {
-                                    TextField("your-client-id.apps.googleusercontent.com", text: $googleClientID)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
+                                Picker(l10n.language, selection: $appLanguage) {
+                                    ForEach(AppLanguage.allCases) { lang in
+                                        Text(lang.displayName).tag(lang.rawValue)
+                                    }
                                 }
-                                FieldGroup(label: "Client Secret") {
-                                    SecureField("GOCSPX-...", text: $googleClientSecret)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
-                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 240)
                                 HStack(spacing: 4) {
                                     Image(systemName: "info.circle")
-                                    Text("Create a Desktop OAuth 2.0 client. Enable Gmail + Calendar APIs.")
+                                    Text(l10n.languageDescription)
                                 }
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                             }
                         }
 
-                        SettingsSection(title: "OpenRouter (AI)", icon: "brain.fill", color: .purple) {
+                        SettingsSection(title: l10n.googleCloudPlatform, icon: "cloud.fill", color: .blue) {
                             VStack(alignment: .leading, spacing: 10) {
-                                FieldGroup(label: "API Key") {
+                                FieldGroup(label: l10n.clientID) {
+                                    TextField("your-client-id.apps.googleusercontent.com", text: $googleClientID)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.callout)
+                                }
+                                FieldGroup(label: l10n.clientSecret) {
+                                    SecureField("GOCSPX-...", text: $googleClientSecret)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.callout)
+                                }
+                                HStack(spacing: 4) {
+                                    Image(systemName: "info.circle")
+                                    Text(l10n.googleCloudHint)
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            }
+                        }
+
+                        SettingsSection(title: l10n.openRouterAI, icon: "brain.fill", color: .purple) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                FieldGroup(label: l10n.apiKey) {
                                     SecureField("sk-or-...", text: $openRouterKey)
                                         .textFieldStyle(.roundedBorder)
                                         .font(.callout)
                                 }
                                 HStack(spacing: 4) {
                                     Image(systemName: "info.circle")
-                                    Text("Get your API key from openrouter.ai")
+                                    Text(l10n.openRouterHint)
                                 }
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -75,19 +95,19 @@ struct SettingsView: View {
 
                     // Right column: status + actions
                     VStack(spacing: 16) {
-                        SettingsSection(title: "Connection Status", icon: "checkmark.circle.fill", color: .green) {
+                        SettingsSection(title: l10n.connectionStatus, icon: "checkmark.circle.fill", color: .green) {
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack(spacing: 8) {
                                     Image(systemName: authService.isSignedIn ? "checkmark.seal.fill" : "xmark.circle")
                                         .font(.title3)
                                         .foregroundStyle(authService.isSignedIn ? .green : .secondary)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(authService.isSignedIn ? "Google Connected" : "Not Connected")
+                                        Text(authService.isSignedIn ? l10n.googleConnected : l10n.notConnected)
                                             .font(.callout)
                                             .fontWeight(.medium)
                                         Text(authService.isSignedIn
-                                             ? "Account linked and ready."
-                                             : "Save credentials and connect below.")
+                                             ? l10n.accountLinked
+                                             : l10n.saveAndConnect)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -95,9 +115,9 @@ struct SettingsView: View {
 
                                 Divider()
 
-                                SyncStatRow(label: "Last Sync", value: syncState?.lastSyncDate ?? "Never")
-                                SyncStatRow(label: "Emails Synced", value: "\(syncState?.totalEmailsSynced ?? 0)")
-                                SyncStatRow(label: "Emails Processed", value: "\(syncState?.totalEmailsProcessed ?? 0)")
+                                SyncStatRow(label: l10n.lastSync, value: syncState?.lastSyncDate ?? "Never")
+                                SyncStatRow(label: l10n.emailsSynced, value: "\(syncState?.totalEmailsSynced ?? 0)")
+                                SyncStatRow(label: l10n.emailsProcessed, value: "\(syncState?.totalEmailsProcessed ?? 0)")
                             }
                         }
 
@@ -138,7 +158,7 @@ struct SettingsView: View {
                                 Button {
                                     performSync()
                                 } label: {
-                                    Label("Sync & Process", systemImage: "arrow.clockwise")
+                                    Label(l10n.syncAndProcess, systemImage: "arrow.clockwise")
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -149,7 +169,7 @@ struct SettingsView: View {
                                     Button {
                                         processOnly()
                                     } label: {
-                                        Label("Process Only", systemImage: "brain")
+                                        Label(l10n.processOnly, systemImage: "brain")
                                             .frame(maxWidth: .infinity)
                                     }
                                     .controlSize(.regular)
@@ -158,7 +178,7 @@ struct SettingsView: View {
                                     Button {
                                         syncToCalendar()
                                     } label: {
-                                        Label("Calendar Sync", systemImage: "calendar.badge.plus")
+                                        Label(l10n.calendarSync, systemImage: "calendar.badge.plus")
                                             .frame(maxWidth: .infinity)
                                     }
                                     .controlSize(.regular)
@@ -170,14 +190,14 @@ struct SettingsView: View {
                                     statusMessage = nil
                                     authError = nil
                                 } label: {
-                                    Label("Disconnect", systemImage: "xmark.circle")
+                                    Label(l10n.disconnect, systemImage: "xmark.circle")
                                 }
                                 .font(.caption)
                             } else {
                                 Button {
                                     saveConnectAndSync()
                                 } label: {
-                                    Label("Save & Connect Google", systemImage: "arrow.right.circle.fill")
+                                    Label(l10n.saveAndConnectGoogle, systemImage: "arrow.right.circle.fill")
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -190,10 +210,10 @@ struct SettingsView: View {
                 }
 
                 // Permissions info
-                SettingsSection(title: "Permissions Requested", icon: "lock.shield.fill", color: .blue) {
+                SettingsSection(title: l10n.permissionsRequested, icon: "lock.shield.fill", color: .blue) {
                     HStack(spacing: 20) {
-                        PermissionRow(icon: "envelope.fill", text: "Gmail — read-only access to your emails")
-                        PermissionRow(icon: "calendar", text: "Google Calendar — create payment events")
+                        PermissionRow(icon: "envelope.fill", text: l10n.gmailPermission)
+                        PermissionRow(icon: "calendar", text: l10n.calendarPermission)
                     }
                 }
             }

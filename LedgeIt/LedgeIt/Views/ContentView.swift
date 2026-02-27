@@ -27,6 +27,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @State private var selectedItem: SidebarItem? = .dashboard
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
     @State private var hasApiKeys = false
     @State private var autoSyncStatus: String?
     @State private var syncTimer: Timer?
@@ -36,24 +38,26 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedItem) {
-                Section("Overview") {
-                    Label(SidebarItem.dashboard.rawValue, systemImage: SidebarItem.dashboard.icon)
+                Section(l10n.overview) {
+                    Label(l10n.dashboard, systemImage: SidebarItem.dashboard.icon)
                         .tag(SidebarItem.dashboard)
                 }
-                Section("Data") {
-                    ForEach([SidebarItem.transactions, .emails, .calendar], id: \.self) { item in
-                        Label(item.rawValue, systemImage: item.icon)
-                            .tag(item)
-                    }
+                Section(l10n.data) {
+                    Label(l10n.transactions, systemImage: SidebarItem.transactions.icon)
+                        .tag(SidebarItem.transactions)
+                    Label(l10n.emails, systemImage: SidebarItem.emails.icon)
+                        .tag(SidebarItem.emails)
+                    Label(l10n.calendar, systemImage: SidebarItem.calendar.icon)
+                        .tag(SidebarItem.calendar)
                 }
-                Section("Analysis") {
-                    ForEach([SidebarItem.analysis, .goals], id: \.self) { item in
-                        Label(item.rawValue, systemImage: item.icon)
-                            .tag(item)
-                    }
+                Section(l10n.analysisSection) {
+                    Label(l10n.analysis, systemImage: SidebarItem.analysis.icon)
+                        .tag(SidebarItem.analysis)
+                    Label(l10n.goals, systemImage: SidebarItem.goals.icon)
+                        .tag(SidebarItem.goals)
                 }
                 Section {
-                    Label(SidebarItem.settings.rawValue, systemImage: SidebarItem.settings.icon)
+                    Label(l10n.settings, systemImage: SidebarItem.settings.icon)
                         .tag(SidebarItem.settings)
                 }
             }
@@ -179,6 +183,8 @@ struct ContentView: View {
 
 struct OnboardingView: View {
     var onGoToSettings: () -> Void
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
 
     var body: some View {
         VStack(spacing: 32) {
@@ -189,33 +195,33 @@ struct OnboardingView: View {
                 .foregroundStyle(.blue.gradient)
 
             VStack(spacing: 8) {
-                Text("Welcome to LedgeIt")
+                Text(l10n.welcomeTitle)
                     .font(.largeTitle)
                     .fontWeight(.bold)
 
-                Text("Personal finance tracking powered by AI")
+                Text(l10n.welcomeSubtitle)
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 14) {
                 FeatureRow(icon: "envelope.open.fill", color: .blue,
-                           title: "Gmail Integration",
-                           subtitle: "Automatically scan financial emails")
+                           title: l10n.gmailIntegration,
+                           subtitle: l10n.gmailIntegrationDesc)
                 FeatureRow(icon: "brain.head.profile.fill", color: .purple,
-                           title: "AI-Powered Extraction",
-                           subtitle: "Extract transactions with Claude AI")
+                           title: l10n.aiExtraction,
+                           subtitle: l10n.aiExtractionDesc)
                 FeatureRow(icon: "chart.pie.fill", color: .orange,
-                           title: "Financial Dashboard",
-                           subtitle: "Visualize spending patterns and trends")
+                           title: l10n.financialDashboard,
+                           subtitle: l10n.financialDashboardDesc)
                 FeatureRow(icon: "calendar.badge.clock", color: .green,
-                           title: "Payment Calendar",
-                           subtitle: "Track upcoming bills and payments")
+                           title: l10n.paymentCalendar,
+                           subtitle: l10n.paymentCalendarDesc)
             }
             .frame(maxWidth: 380)
 
             Button(action: onGoToSettings) {
-                Label("Get Started", systemImage: "arrow.right.circle.fill")
+                Label(l10n.getStarted, systemImage: "arrow.right.circle.fill")
                     .frame(maxWidth: 260)
             }
             .buttonStyle(.borderedProminent)

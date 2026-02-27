@@ -6,6 +6,8 @@ struct AnalysisDashboardView: View {
     @State private var isGenerating = false
     @State private var progress = ""
     @State private var errorMessage: String?
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
 
     var body: some View {
         ScrollView {
@@ -24,12 +26,12 @@ struct AnalysisDashboardView: View {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.title).foregroundStyle(.red)
-                        Text("Analysis Failed")
+                        Text(l10n.analysisFailed)
                             .font(.headline)
                         Text(errorMessage)
                             .font(.callout).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("Try Again") { generateReport() }
+                        Button(l10n.tryAgain) { generateReport() }
                             .buttonStyle(.bordered)
                     }
                     .padding(.top, 40)
@@ -39,7 +41,7 @@ struct AnalysisDashboardView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Financial Analysis")
+        .navigationTitle(l10n.financialAnalysis)
         .onAppear { restoreReport() }
     }
 
@@ -48,9 +50,9 @@ struct AnalysisDashboardView: View {
     private var headerSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Financial Analysis")
+                Text(l10n.financialAnalysis)
                     .font(.title2).fontWeight(.bold)
-                Text("AI-powered spending analysis and advice")
+                Text(l10n.analysisSubtitle)
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
@@ -61,7 +63,7 @@ struct AnalysisDashboardView: View {
                 }
             } else {
                 Button { generateReport() } label: {
-                    Label(report != nil ? "Refresh Report" : "Generate Report", systemImage: "sparkles")
+                    Label(report != nil ? l10n.refreshReport : l10n.generateReport, systemImage: "sparkles")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
@@ -90,7 +92,7 @@ struct AnalysisDashboardView: View {
             .frame(width: 80, height: 80)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Financial Health Score")
+                Text(l10n.financialHealthScore)
                     .font(.headline)
                 Text(advice.overallAssessment)
                     .font(.callout).foregroundStyle(.secondary)
@@ -115,7 +117,7 @@ struct AnalysisDashboardView: View {
         HStack(alignment: .top, spacing: 12) {
             if !advice.positiveHabits.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Positive Habits", systemImage: "hand.thumbsup.fill")
+                    Label(l10n.positiveHabits, systemImage: "hand.thumbsup.fill")
                         .font(.subheadline).fontWeight(.semibold).foregroundStyle(.green)
                     ForEach(advice.positiveHabits, id: \.self) { habit in
                         HStack(alignment: .top, spacing: 6) {
@@ -131,7 +133,7 @@ struct AnalysisDashboardView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Label("Action Items", systemImage: "bolt.fill")
+                Label(l10n.actionItems, systemImage: "bolt.fill")
                     .font(.subheadline).fontWeight(.semibold).foregroundStyle(.blue)
                 ForEach(advice.actionItems, id: \.self) { item in
                     HStack(alignment: .top, spacing: 6) {
@@ -160,7 +162,7 @@ struct AnalysisDashboardView: View {
 
     private func anomaliesSection(_ anomalies: [SpendingAnalyzer.AnomalyAlert]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Unusual Spending", systemImage: "exclamationmark.triangle.fill")
+            Label(l10n.unusualSpending, systemImage: "exclamationmark.triangle.fill")
                 .font(.headline).foregroundStyle(.orange)
             ForEach(anomalies) { anomaly in
                 HStack {
@@ -172,7 +174,7 @@ struct AnalysisDashboardView: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("\(anomaly.currency) \(String(format: "%.0f", anomaly.amount))")
                             .font(.callout).fontWeight(.semibold).monospacedDigit()
-                        Text("\(String(format: "%.1f", anomaly.deviation))x avg")
+                        Text("\(String(format: "%.1f", anomaly.deviation))\(l10n.avgSuffix)")
                             .font(.caption).foregroundStyle(.orange)
                     }
                 }
@@ -188,7 +190,7 @@ struct AnalysisDashboardView: View {
 
     private func categoryInsightsSection(_ insights: [FinancialAdvisor.CategoryInsight]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Category Insights", systemImage: "chart.pie.fill")
+            Label(l10n.categoryInsights, systemImage: "chart.pie.fill")
                 .font(.headline)
             ForEach(insights, id: \.category) { insight in
                 VStack(alignment: .leading, spacing: 6) {
@@ -223,7 +225,7 @@ struct AnalysisDashboardView: View {
 
     private func savingsTrendChart(_ trends: [SpendingAnalyzer.MonthTrend]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Savings Rate Trend", systemImage: "chart.line.uptrend.xyaxis")
+            Label(l10n.savingsRateTrend, systemImage: "chart.line.uptrend.xyaxis")
                 .font(.headline)
             Chart(trends) { trend in
                 LineMark(
@@ -251,7 +253,7 @@ struct AnalysisDashboardView: View {
             .chartYAxisLabel("Savings Rate %")
             .frame(height: 240)
 
-            Text("Dashed line = 20% savings target")
+            Text(l10n.savingsTarget)
                 .font(.caption).foregroundStyle(.tertiary)
         }
         .padding(16)
@@ -263,9 +265,9 @@ struct AnalysisDashboardView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            "No Analysis Yet",
+            l10n.noAnalysisYet,
             systemImage: "chart.bar.doc.horizontal",
-            description: Text("Click \"Generate Report\" to create an AI-powered financial analysis.")
+            description: Text(l10n.noAnalysisDescription)
         )
         .padding(.top, 40)
     }

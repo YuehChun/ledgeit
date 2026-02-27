@@ -6,6 +6,8 @@ struct GoalsView: View {
     @State private var filter: GoalFilter = .all
     @State private var hasInitializedFilter = false
     @State private var cancellable: AnyDatabaseCancellable?
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
 
     enum GoalFilter: String, CaseIterable {
         case active = "Active"
@@ -17,13 +19,14 @@ struct GoalsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Financial Goals")
+                Text(l10n.financialGoals)
                     .font(.title2).fontWeight(.bold)
                 Spacer()
-                Picker("Filter", selection: $filter) {
-                    ForEach(GoalFilter.allCases, id: \.self) { f in
-                        Text(f.rawValue).tag(f)
-                    }
+                Picker(l10n.financialGoals, selection: $filter) {
+                    Text(l10n.active).tag(GoalFilter.active)
+                    Text(l10n.suggested).tag(GoalFilter.suggested)
+                    Text(l10n.completed).tag(GoalFilter.completed)
+                    Text(l10n.all).tag(GoalFilter.all)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 300)
@@ -34,16 +37,24 @@ struct GoalsView: View {
             if goals.isEmpty {
                 if filter == .all {
                     ContentUnavailableView(
-                        "No Goals Yet",
+                        l10n.noGoalsYet,
                         systemImage: "target",
-                        description: Text("Generate a Financial Analysis first to get AI-suggested goals.")
+                        description: Text(l10n.noGoalsDescription)
                     )
                     .frame(maxHeight: .infinity)
                 } else {
+                    let filterName: String = {
+                        switch filter {
+                        case .active: return l10n.active
+                        case .suggested: return l10n.suggested
+                        case .completed: return l10n.completed
+                        case .all: return l10n.all
+                        }
+                    }()
                     ContentUnavailableView(
-                        "No \(filter.rawValue) Goals",
+                        "No \(filterName) Goals",
                         systemImage: "target",
-                        description: Text("Try switching to a different filter to see your goals.")
+                        description: Text(l10n.noFilteredGoals)
                     )
                     .frame(maxHeight: .infinity)
                 }
@@ -54,10 +65,10 @@ struct GoalsView: View {
                         let longTerm = goals.filter { $0.type == "long_term" }
 
                         if !shortTerm.isEmpty {
-                            goalSection(title: "Short-Term Goals (1-3 months)", goals: shortTerm)
+                            goalSection(title: l10n.shortTermGoals, goals: shortTerm)
                         }
                         if !longTerm.isEmpty {
-                            goalSection(title: "Long-Term Goals (1-3 years)", goals: longTerm)
+                            goalSection(title: l10n.longTermGoals, goals: longTerm)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -107,13 +118,13 @@ struct GoalsView: View {
                 Spacer()
 
                 if goal.status == "suggested" {
-                    Button("Accept") { updateStatus(goal.id, "accepted") }
+                    Button(l10n.accept) { updateStatus(goal.id, "accepted") }
                         .buttonStyle(.bordered).controlSize(.mini)
-                    Button("Dismiss") { updateStatus(goal.id, "dismissed") }
+                    Button(l10n.dismiss) { updateStatus(goal.id, "dismissed") }
                         .buttonStyle(.plain).controlSize(.mini)
                         .foregroundStyle(.secondary)
                 } else if goal.status == "accepted" {
-                    Button("Complete") { updateStatus(goal.id, "completed") }
+                    Button(l10n.complete) { updateStatus(goal.id, "completed") }
                         .buttonStyle(.borderedProminent).controlSize(.mini)
                 }
             }
