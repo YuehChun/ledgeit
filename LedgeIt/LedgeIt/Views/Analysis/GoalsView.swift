@@ -3,7 +3,8 @@ import GRDB
 
 struct GoalsView: View {
     @State private var goals: [FinancialGoal] = []
-    @State private var filter: GoalFilter = .active
+    @State private var filter: GoalFilter = .all
+    @State private var hasInitializedFilter = false
     @State private var cancellable: AnyDatabaseCancellable?
 
     enum GoalFilter: String, CaseIterable {
@@ -31,12 +32,21 @@ struct GoalsView: View {
             .padding(.top, 20)
 
             if goals.isEmpty {
-                ContentUnavailableView(
-                    "No Goals",
-                    systemImage: "target",
-                    description: Text("Generate a financial analysis to get AI-suggested goals.")
-                )
-                .frame(maxHeight: .infinity)
+                if filter == .all {
+                    ContentUnavailableView(
+                        "No Goals Yet",
+                        systemImage: "target",
+                        description: Text("Generate a Financial Analysis first to get AI-suggested goals.")
+                    )
+                    .frame(maxHeight: .infinity)
+                } else {
+                    ContentUnavailableView(
+                        "No \(filter.rawValue) Goals",
+                        systemImage: "target",
+                        description: Text("Try switching to a different filter to see your goals.")
+                    )
+                    .frame(maxHeight: .infinity)
+                }
             } else {
                 ScrollView {
                     VStack(spacing: 12) {
@@ -164,6 +174,17 @@ struct GoalsView: View {
     }
 
     private func startObservation() {
+        loadGoals()
+        if !hasInitializedFilter {
+            hasInitializedFilter = true
+            let suggestedCount = (try? AppDatabase.shared.db.read { db in
+                try FinancialGoal.filter(FinancialGoal.Columns.status == "suggested").fetchCount(db)
+            }) ?? 0
+            if suggestedCount > 0 {
+                filter = .suggested
+                loadGoals()
+            }
+        }
         let observation = ValueObservation.tracking { db -> Int in
             try FinancialGoal.fetchCount(db)
         }
