@@ -133,5 +133,35 @@ struct DatabaseMigrations {
             try db.create(index: "idx_credit_card_bills_due_date", on: "credit_card_bills", columns: ["due_date"])
             try db.create(index: "idx_credit_card_bills_bank_name", on: "credit_card_bills", columns: ["bank_name"])
         }
+
+        // MARK: - v5: Financial analysis tables
+        migrator.registerMigration("v5") { db in
+            try db.create(table: "financial_reports") { t in
+                t.primaryKey("id", .text)
+                t.column("report_type", .text).notNull()      // monthly, quarterly, yearly
+                t.column("period_start", .text).notNull()
+                t.column("period_end", .text).notNull()
+                t.column("summary_json", .text).notNull()
+                t.column("advice_json", .text).notNull()
+                t.column("goals_json", .text).notNull()
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+            try db.create(index: "idx_financial_reports_period", on: "financial_reports", columns: ["period_start", "period_end"])
+
+            try db.create(table: "financial_goals") { t in
+                t.primaryKey("id", .text)
+                t.column("type", .text).notNull()              // short_term, long_term
+                t.column("title", .text).notNull()
+                t.column("description", .text).notNull()
+                t.column("target_amount", .double)
+                t.column("target_date", .text)
+                t.column("category", .text)                    // savings, budget, investment, debt
+                t.column("status", .text).notNull().defaults(to: "suggested")  // suggested, accepted, completed, dismissed
+                t.column("progress", .double).notNull().defaults(to: 0)
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+            try db.create(index: "idx_financial_goals_status", on: "financial_goals", columns: ["status"])
+            try db.create(index: "idx_financial_goals_type", on: "financial_goals", columns: ["type"])
+        }
     }
 }
