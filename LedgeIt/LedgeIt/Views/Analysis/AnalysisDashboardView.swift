@@ -40,6 +40,7 @@ struct AnalysisDashboardView: View {
             .padding(20)
         }
         .navigationTitle("Financial Analysis")
+        .onAppear { restoreReport() }
     }
 
     // MARK: - Header
@@ -60,7 +61,7 @@ struct AnalysisDashboardView: View {
                 }
             } else {
                 Button { generateReport() } label: {
-                    Label("Generate Report", systemImage: "sparkles")
+                    Label(report != nil ? "Refresh Report" : "Generate Report", systemImage: "sparkles")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
@@ -278,6 +279,43 @@ struct AnalysisDashboardView: View {
                 progressTask.cancel()
             } catch {
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func restoreReport() {
+        guard report == nil, !isGenerating else { return }
+        Task {
+            do {
+                let db = AppDatabase.shared
+                let saved = try await db.db.read { db in
+                    try FinancialReport
+                        .order(FinancialReport.Columns.createdAt.desc)
+                        .fetchOne(db)
+                }
+                guard let saved,
+                      let adviceData = saved.adviceJSON.data(using: .utf8) else { return }
+
+                let decoder = JSONDecoder()
+                let advice = try decoder.decode(FinancialAdvisor.SpendingAdvice.self, from: adviceData)
+
+                let components = saved.periodStart.split(separator: "-")
+                guard components.count >= 2,
+                      let year = Int(components[0]),
+                      let month = Int(components[1]) else { return }
+
+                let analyzer = SpendingAnalyzer(database: db)
+                let monthlyReport = try analyzer.monthlyBreakdown(year: year, month: month)
+                let trends = try analyzer.spendingTrend(months: 6)
+
+                report = ReportGenerator.FullReport(
+                    monthlyReport: monthlyReport,
+                    trends: trends,
+                    advice: advice,
+                    goals: GoalPlanner.GoalSuggestions(shortTerm: [], longTerm: [])
+                )
+            } catch {
+                print("AnalysisDashboardView: failed to restore report: \(error)")
             }
         }
     }
