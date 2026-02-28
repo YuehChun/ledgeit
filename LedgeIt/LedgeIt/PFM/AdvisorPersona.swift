@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 struct AdvisorPersona: Codable, Sendable, Identifiable {
     let id: String
@@ -94,5 +95,17 @@ struct AdvisorPersona: Codable, Sendable, Identifiable {
         case "custom": return .custom(savingsTarget: customSavingsTarget, riskLevel: customRiskLevel)
         default: return .moderate
         }
+    }
+
+    /// Resolve persona checking for an active versioned prompt first, falling back to presets.
+    static func resolveWithVersions(id: String, customSavingsTarget: Double, customRiskLevel: String) -> AdvisorPersona {
+        if let active = try? AppDatabase.shared.db.read({ db in
+            try PromptVersion
+                .filter(Column("is_active") == 1)
+                .fetchOne(db)
+        }) {
+            return active.toPersona()
+        }
+        return resolve(id: id, customSavingsTarget: customSavingsTarget, customRiskLevel: customRiskLevel)
     }
 }

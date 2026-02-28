@@ -102,6 +102,12 @@ struct L10n: Sendable {
     var accept: String { s("Accept", "接受") }
     var dismiss: String { s("Dismiss", "忽略") }
     var complete: String { s("Complete", "完成") }
+    var progress: String { s("Progress", "進度") }
+    var markComplete: String { s("Mark Complete", "標記完成") }
+    var regeneratingGoals: String { s("Regenerating goals for new advisor...", "正在為新顧問重新產生目標...") }
+    func noGoalsForFilter(_ filterName: String) -> String {
+        s("No \(filterName) Goals", "沒有\(filterName)的目標")
+    }
 
     // MARK: - AI Advisor
 
@@ -123,8 +129,46 @@ struct L10n: Sendable {
     var riskHigh: String { s("High", "高") }
     var applyAndRegenerate: String { s("Apply & Regenerate Report", "套用並重新產生報告") }
     var currentAdvisor: String { s("Current Advisor", "目前顧問") }
-    var categoryBudgets: String { s("Category Budget Hints", "類別預算參考") }
+    var categoryBudgets: String { s("Category Budget Limits", "類別預算上限") }
     var ofIncome: String { s("of income", "收入占比") }
+    var resetToDefault: String { s("Reset to Default", "重設為預設值") }
+
+    // MARK: - Prompt Versioning
+
+    var feedbackSection: String { s("Optimize Advisor", "優化顧問") }
+    var feedbackPlaceholder: String { s("How should the advisor adjust? (e.g., 'dining suggestions are too strict')", "顧問應如何調整？（例如：「餐飲建議太嚴格」）") }
+    var optimizeButton: String { s("Optimize", "優化") }
+    var optimizing: String { s("Optimizing prompt...", "正在優化提示詞...") }
+    var optimizePreview: String { s("Proposed Changes", "建議的變更") }
+    var applyButton: String { s("Apply & Regenerate", "套用並重新產生") }
+    var applying: String { s("Applying changes...", "正在套用變更...") }
+    var versionHistory: String { s("Version History", "版本歷史") }
+    var initialPreset: String { s("Initial preset", "初始預設") }
+    var revert: String { s("Revert", "還原") }
+    var activeVersion: String { s("Active", "使用中") }
+
+    // MARK: - Category Names
+
+    func categoryName(_ raw: String) -> String {
+        switch raw {
+        case "FOOD_AND_DRINK": return s("Food & Drink", "餐飲")
+        case "GROCERIES": return s("Groceries", "生鮮雜貨")
+        case "ENTERTAINMENT": return s("Entertainment", "娛樂")
+        case "TRAVEL": return s("Travel", "旅遊")
+        case "HEALTHCARE": return s("Healthcare", "醫療")
+        case "PERSONAL_CARE": return s("Personal Care", "個人護理")
+        case "EDUCATION": return s("Education", "教育")
+        case "CHARITY": return s("Charity", "慈善")
+        case "BANK_FEES_AND_CHARGES": return s("Bank Fees", "銀行手續費")
+        case "UTILITIES": return s("Utilities", "水電瓦斯")
+        case "INSURANCE": return s("Insurance", "保險")
+        case "INVESTMENTS": return s("Investments", "投資")
+        case "SHOPPING": return s("Shopping", "購物")
+        case "TRANSPORT": return s("Transport", "交通")
+        case "GENERAL": return s("General", "一般")
+        default: return raw
+        }
+    }
 
     // MARK: - Transaction Verification
 

@@ -163,5 +163,21 @@ struct DatabaseMigrations {
             try db.create(index: "idx_financial_goals_status", on: "financial_goals", columns: ["status"])
             try db.create(index: "idx_financial_goals_type", on: "financial_goals", columns: ["type"])
         }
+
+        // MARK: - v6: Prompt version control
+        migrator.registerMigration("v6") { db in
+            try db.create(table: "prompt_versions") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("base_persona_id", .text).notNull()
+                t.column("spending_philosophy", .text).notNull()
+                t.column("savings_target", .double).notNull()
+                t.column("risk_level", .text).notNull()
+                t.column("category_budget_hints", .text).notNull()
+                t.column("user_feedback", .text)
+                t.column("is_active", .integer).notNull().defaults(to: false)
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+            try db.create(index: "idx_prompt_versions_active", on: "prompt_versions", columns: ["is_active"])
+        }
     }
 }

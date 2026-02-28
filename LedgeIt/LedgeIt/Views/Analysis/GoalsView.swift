@@ -17,7 +17,7 @@ struct GoalsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             HStack {
                 Text(l10n.financialGoals)
                     .font(.title2).fontWeight(.bold)
@@ -33,15 +33,16 @@ struct GoalsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
+            .padding(.bottom, 16)
 
             if goals.isEmpty {
+                Spacer()
                 if filter == .all {
                     ContentUnavailableView(
                         l10n.noGoalsYet,
                         systemImage: "target",
                         description: Text(l10n.noGoalsDescription)
                     )
-                    .frame(maxHeight: .infinity)
                 } else {
                     let filterName: String = {
                         switch filter {
@@ -52,12 +53,12 @@ struct GoalsView: View {
                         }
                     }()
                     ContentUnavailableView(
-                        "No \(filterName) Goals",
+                        l10n.noGoalsForFilter(filterName),
                         systemImage: "target",
                         description: Text(l10n.noFilteredGoals)
                     )
-                    .frame(maxHeight: .infinity)
                 }
+                Spacer()
             } else {
                 ScrollView {
                     VStack(spacing: 12) {
@@ -76,6 +77,7 @@ struct GoalsView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Goals")
         .onAppear { startObservation() }
         .onDisappear { cancellable?.cancel() }
@@ -106,6 +108,11 @@ struct GoalsView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Progress section for accepted/completed goals
+            if goal.status == "accepted" || goal.status == "completed" {
+                progressSection(goal)
+            }
+
             HStack {
                 if let amount = goal.targetAmount {
                     Label("\(String(format: "%.0f", amount))", systemImage: "dollarsign.circle")
@@ -124,7 +131,7 @@ struct GoalsView: View {
                         .buttonStyle(.plain).controlSize(.mini)
                         .foregroundStyle(.secondary)
                 } else if goal.status == "accepted" {
-                    Button(l10n.complete) { updateStatus(goal.id, "completed") }
+                    Button(l10n.markComplete) { completeGoal(goal.id) }
                         .buttonStyle(.borderedProminent).controlSize(.mini)
                 }
             }
@@ -134,8 +141,91 @@ struct GoalsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    // MARK: - Progress
+
+    private func progressSection(_ goal: FinancialGoal) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(l10n.progress)
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(goal.progress))%")
+                    .font(.caption).fontWeight(.bold).monospacedDigit()
+                    .foregroundStyle(goal.progress >= 100 ? .green : .primary)
+            }
+
+            if goal.status == "accepted" {
+                Slider(value: progressBinding(for: goal.id), in: 0...100, step: 5)
+                    .tint(progressColor(goal.progress))
+                    .controlSize(.mini)
+            } else {
+                ProgressView(value: min(goal.progress, 100), total: 100)
+                    .tint(.green)
+            }
+        }
+    }
+
+    private func progressColor(_ progress: Double) -> Color {
+        if progress >= 80 { return .green }
+        if progress >= 40 { return .orange }
+        return .blue
+    }
+
+    private func progressBinding(for goalId: String) -> Binding<Double> {
+        Binding(
+            get: {
+                goals.first(where: { $0.id == goalId })?.progress ?? 0
+            },
+            set: { newValue in
+                if let idx = goals.firstIndex(where: { $0.id == goalId }) {
+                    goals[idx].progress = newValue
+                }
+                saveProgress(goalId, newValue)
+            }
+        )
+    }
+
+    private func saveProgress(_ id: String, _ progress: Double) {
+        let progressVal = progress
+        Task {
+            try? await AppDatabase.shared.db.write { db in
+                if var g = try FinancialGoal.fetchOne(db, key: id) {
+                    g.progress = progressVal
+                    try g.update(db)
+                }
+            }
+        }
+    }
+
+    private func completeGoal(_ id: String) {
+        if let idx = goals.firstIndex(where: { $0.id == id }) {
+            goals[idx].progress = 100
+            goals[idx].status = "completed"
+        }
+        Task {
+            try? await AppDatabase.shared.db.write { db in
+                if var g = try FinancialGoal.fetchOne(db, key: id) {
+                    g.progress = 100
+                    g.status = "completed"
+                    try g.update(db)
+                }
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
     private func statusBadge(_ status: String) -> some View {
-        Text(status.replacingOccurrences(of: "_", with: " ").capitalized)
+        let localizedStatus: String = {
+            switch status {
+            case "suggested": return l10n.suggested
+            case "accepted": return l10n.active
+            case "completed": return l10n.completed
+            case "dismissed": return l10n.dismiss
+            default: return status.capitalized
+            }
+        }()
+        return Text(localizedStatus)
             .font(.system(size: 10, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, 8)

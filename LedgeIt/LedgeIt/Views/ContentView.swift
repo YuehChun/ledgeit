@@ -55,14 +55,14 @@ struct ContentView: View {
                 Section(l10n.analysisSection) {
                     Label(l10n.analysis, systemImage: SidebarItem.analysis.icon)
                         .tag(SidebarItem.analysis)
-                    Label(l10n.aiAdvisorSidebar, systemImage: SidebarItem.advisor.icon)
-                        .tag(SidebarItem.advisor)
                     Label(l10n.goals, systemImage: SidebarItem.goals.icon)
                         .tag(SidebarItem.goals)
                 }
                 Section {
                     Label(l10n.settings, systemImage: SidebarItem.settings.icon)
                         .tag(SidebarItem.settings)
+                    Label(l10n.aiAdvisorSidebar, systemImage: SidebarItem.advisor.icon)
+                        .tag(SidebarItem.advisor)
                 }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)

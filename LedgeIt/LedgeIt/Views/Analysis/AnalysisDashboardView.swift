@@ -10,9 +10,18 @@ struct AnalysisDashboardView: View {
     @AppStorage("advisorPersonaId") private var personaId = "moderate"
     @AppStorage("customSavingsTarget") private var customSavingsTarget = 0.20
     @AppStorage("customRiskLevel") private var customRiskLevel = "medium"
+    @AppStorage("categoryBudgetOverrides") private var budgetOverridesJSON = ""
     private var l10n: L10n { L10n(appLanguage) }
     private var persona: AdvisorPersona {
         AdvisorPersona.resolve(id: personaId, customSavingsTarget: customSavingsTarget, customRiskLevel: customRiskLevel)
+    }
+    private var effectiveBudgets: [String: Double] {
+        if !budgetOverridesJSON.isEmpty,
+           let data = budgetOverridesJSON.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
+            return decoded
+        }
+        return persona.categoryBudgetHints
     }
 
     var body: some View {
@@ -119,7 +128,7 @@ struct AnalysisDashboardView: View {
 
     private func budgetStatusColor(category: String) -> Color {
         guard let report,
-              let budgetPct = persona.categoryBudgetHints[category] else { return .secondary }
+              let budgetPct = effectiveBudgets[category] else { return .secondary }
         let income = report.monthlyReport.totalIncome
         guard income > 0 else { return .secondary }
         let budgetLimit = income * budgetPct
@@ -213,10 +222,10 @@ struct AnalysisDashboardView: View {
             ForEach(insights, id: \.category) { insight in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(CategoryStyle.style(forRawCategory: insight.category).displayName)
+                        Text(l10n.categoryName(insight.category))
                             .font(.callout).fontWeight(.semibold)
                         Spacer()
-                        if let budgetPct = persona.categoryBudgetHints[insight.category] {
+                        if let budgetPct = effectiveBudgets[insight.category] {
                             Text("\(Int(budgetPct * 100))% max")
                                 .font(.caption2)
                                 .padding(.horizontal, 6)
