@@ -36,7 +36,9 @@ struct GoalPlanner: Sendable {
 
     func suggestGoals(
         report: SpendingAnalyzer.MonthlyReport,
-        advice: FinancialAdvisor.SpendingAdvice
+        advice: FinancialAdvisor.SpendingAdvice,
+        language: String = "en",
+        persona: AdvisorPersona = .moderate
     ) async throws -> GoalSuggestions {
         // Fetch existing active goals to avoid duplicates
         let existingGoals: [FinancialGoal] = try await database.db.read { db in
@@ -49,10 +51,26 @@ struct GoalPlanner: Sendable {
             "[\($0.type)] \($0.title) - \($0.status)"
         }.joined(separator: "\n")
 
+        let languageInstruction = language == "zh-Hant"
+            ? "You MUST write ALL text values (title, description, reasoning) in Traditional Chinese (繁體中文). "
+            : ""
+
+        let personaPriority: String
+        switch persona.id {
+        case "conservative":
+            personaPriority = "Prioritize: emergency fund first, then debt elimination, then insurance review. Avoid investment goals."
+        case "aggressive":
+            personaPriority = "Prioritize: investment goals first, then income growth, then strategic debt leverage. Focus on wealth building."
+        default:
+            personaPriority = "Prioritize: balanced savings and investment, moderate spending reduction, diversified goals."
+        }
+
         let systemPrompt = """
-        You are a certified financial planner creating personalized financial goals. \
+        You are a \(persona.id) financial planner creating personalized financial goals. \
+        Target savings rate: \(Int(persona.savingsTarget * 100))%. Risk tolerance: \(persona.riskLevel). \
+        \(personaPriority) \
         Goals should be SMART (Specific, Measurable, Achievable, Relevant, Time-bound). \
-        Return ONLY valid JSON with no markdown formatting.
+        \(languageInstruction)Return ONLY valid JSON with no markdown formatting.
         """
 
         let userPrompt = """

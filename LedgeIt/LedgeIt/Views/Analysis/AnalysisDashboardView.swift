@@ -7,7 +7,13 @@ struct AnalysisDashboardView: View {
     @State private var progress = ""
     @State private var errorMessage: String?
     @AppStorage("appLanguage") private var appLanguage = "en"
+    @AppStorage("advisorPersonaId") private var personaId = "moderate"
+    @AppStorage("customSavingsTarget") private var customSavingsTarget = 0.20
+    @AppStorage("customRiskLevel") private var customRiskLevel = "medium"
     private var l10n: L10n { L10n(appLanguage) }
+    private var persona: AdvisorPersona {
+        AdvisorPersona.resolve(id: personaId, customSavingsTarget: customSavingsTarget, customRiskLevel: customRiskLevel)
+    }
 
     var body: some View {
         ScrollView {
@@ -111,6 +117,18 @@ struct AnalysisDashboardView: View {
         return .red
     }
 
+    private func budgetStatusColor(category: String) -> Color {
+        guard let report,
+              let budgetPct = persona.categoryBudgetHints[category] else { return .secondary }
+        let income = report.monthlyReport.totalIncome
+        guard income > 0 else { return .secondary }
+        let budgetLimit = income * budgetPct
+        let actual = report.monthlyReport.categoryBreakdown.first { $0.category == category }?.amount ?? 0
+        if actual <= budgetLimit * 0.8 { return .green }
+        if actual <= budgetLimit { return .yellow }
+        return .red
+    }
+
     // MARK: - Advice Section
 
     private func adviceSection(_ advice: FinancialAdvisor.SpendingAdvice) -> some View {
@@ -198,6 +216,15 @@ struct AnalysisDashboardView: View {
                         Text(CategoryStyle.style(forRawCategory: insight.category).displayName)
                             .font(.callout).fontWeight(.semibold)
                         Spacer()
+                        if let budgetPct = persona.categoryBudgetHints[insight.category] {
+                            Text("\(Int(budgetPct * 100))% max")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(budgetStatusColor(category: insight.category).opacity(0.15))
+                                .foregroundStyle(budgetStatusColor(category: insight.category))
+                                .clipShape(Capsule())
+                        }
                     }
                     Text(insight.assessment)
                         .font(.callout).foregroundStyle(.secondary)
@@ -246,7 +273,7 @@ struct AnalysisDashboardView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
 
-                RuleMark(y: .value("Target", 20))
+                RuleMark(y: .value("Target", persona.savingsTarget * 100))
                     .foregroundStyle(.orange.opacity(0.5))
                     .lineStyle(StrokeStyle(dash: [5, 5]))
             }
@@ -295,7 +322,7 @@ struct AnalysisDashboardView: View {
                     }
                 }
 
-                report = try await generator.generateMonthlyReport(year: year, month: month)
+                report = try await generator.generateMonthlyReport(year: year, month: month, language: appLanguage, persona: persona)
                 progressTask.cancel()
             } catch {
                 errorMessage = error.localizedDescription

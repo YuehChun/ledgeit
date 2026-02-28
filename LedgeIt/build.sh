@@ -42,6 +42,8 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSApplicationCategoryType</key>
@@ -56,6 +58,9 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
 </dict>
 </plist>
 PLIST
+
+# Copy app icon
+cp "LedgeIt/Resources/AppIcon.icns" "${CONTENTS}/Resources/AppIcon.icns"
 
 # Copy resources if they exist
 if [ -d "${BUILD_DIR}/arm64-apple-macosx/release/LedgeIt_LedgeIt.bundle" ]; then

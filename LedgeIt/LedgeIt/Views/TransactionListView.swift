@@ -134,6 +134,10 @@ private struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Circle()
+                .fill(confidenceColor)
+                .frame(width: 6, height: 6)
+
             if let category = transaction.category {
                 CategoryIcon(category: category, size: 22)
             }
@@ -157,5 +161,17 @@ private struct TransactionRow: View {
             AmountText(amount: transaction.amount, currency: transaction.currency, type: transaction.type)
         }
         .padding(.vertical, 2)
+        .listRowBackground(
+            (transaction.confidence ?? 1.0) < 0.7
+                ? Color.yellow.opacity(0.06)
+                : Color.clear
+        )
+    }
+
+    private var confidenceColor: Color {
+        let conf = transaction.confidence ?? 1.0
+        if conf >= 0.8 { return .green }
+        if conf >= 0.5 { return .yellow }
+        return .red
     }
 }

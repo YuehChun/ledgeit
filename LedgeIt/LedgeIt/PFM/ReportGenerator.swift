@@ -30,7 +30,7 @@ final class ReportGenerator {
 
     // MARK: - Generate Report
 
-    func generateMonthlyReport(year: Int, month: Int) async throws -> FullReport {
+    func generateMonthlyReport(year: Int, month: Int, language: String = "en", persona: AdvisorPersona = .moderate) async throws -> FullReport {
         guard !isGenerating else {
             throw ReportError.alreadyGenerating
         }
@@ -44,11 +44,11 @@ final class ReportGenerator {
 
         // Step 2: AI financial advice
         progress = "Generating financial advice..."
-        let advice = try await advisor.analyzeSpendingHabits(report: report, trends: trends)
+        let advice = try await advisor.analyzeSpendingHabits(report: report, trends: trends, language: language, persona: persona)
 
         // Step 3: AI goal suggestions
         progress = "Planning financial goals..."
-        let goals = try await goalPlanner.suggestGoals(report: report, advice: advice)
+        let goals = try await goalPlanner.suggestGoals(report: report, advice: advice, language: language, persona: persona)
 
         // Step 4: Save goals to DB
         try await goalPlanner.saveGoals(goals)

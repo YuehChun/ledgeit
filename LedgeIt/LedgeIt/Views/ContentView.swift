@@ -7,6 +7,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case emails = "Emails"
     case calendar = "Calendar"
     case analysis = "Analysis"
+    case advisor = "Advisor"
     case goals = "Goals"
     case settings = "Settings"
 
@@ -19,6 +20,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .emails: return "envelope.fill"
         case .calendar: return "calendar"
         case .analysis: return "chart.bar.doc.horizontal.fill"
+        case .advisor: return "brain.head.profile.fill"
         case .goals: return "target"
         case .settings: return "gearshape.fill"
         }
@@ -53,6 +55,8 @@ struct ContentView: View {
                 Section(l10n.analysisSection) {
                     Label(l10n.analysis, systemImage: SidebarItem.analysis.icon)
                         .tag(SidebarItem.analysis)
+                    Label(l10n.aiAdvisorSidebar, systemImage: SidebarItem.advisor.icon)
+                        .tag(SidebarItem.advisor)
                     Label(l10n.goals, systemImage: SidebarItem.goals.icon)
                         .tag(SidebarItem.goals)
                 }
@@ -91,6 +95,8 @@ struct ContentView: View {
                         CalendarView()
                     case .analysis:
                         AnalysisDashboardView()
+                    case .advisor:
+                        AdvisorSettingsView()
                     case .goals:
                         GoalsView()
                     case .settings:

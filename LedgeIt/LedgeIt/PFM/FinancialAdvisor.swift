@@ -31,7 +31,7 @@ struct FinancialAdvisor: Sendable {
 
     // MARK: - Analyze Spending Habits
 
-    func analyzeSpendingHabits(report: SpendingAnalyzer.MonthlyReport, trends: [SpendingAnalyzer.MonthTrend]) async throws -> SpendingAdvice {
+    func analyzeSpendingHabits(report: SpendingAnalyzer.MonthlyReport, trends: [SpendingAnalyzer.MonthTrend], language: String = "en", persona: AdvisorPersona = .moderate) async throws -> SpendingAdvice {
         let categoryText = report.categoryBreakdown.map { cat in
             var line = "\(cat.category): \(String(format: "%.0f", cat.amount)) (\(String(format: "%.1f", cat.percentage))%)"
             if let change = cat.changePercent {
@@ -52,11 +52,16 @@ struct FinancialAdvisor: Sendable {
             "\($0.label): spending=\(String(format: "%.0f", $0.spending)), income=\(String(format: "%.0f", $0.income)), savings_rate=\(String(format: "%.1f%%", $0.savingsRate * 100))"
         }.joined(separator: "\n")
 
+        let languageInstruction = language == "zh-Hant"
+            ? "You MUST write ALL text values in Traditional Chinese (繁體中文). "
+            : ""
+
         let systemPrompt = """
-        You are a certified financial planner (CFP) providing personalized financial advice. \
-        Analyze the user's spending data and provide professional, actionable advice. \
-        Consider local cost of living standards and common financial planning principles. \
-        Return ONLY valid JSON with no markdown formatting.
+        \(persona.spendingPhilosophy) \
+        Target savings rate for this client: \(Int(persona.savingsTarget * 100))%. \
+        Risk tolerance: \(persona.riskLevel). \
+        Evaluate spending against these standards. \
+        \(languageInstruction)Return ONLY valid JSON with no markdown formatting.
         """
 
         let userPrompt = """
@@ -95,7 +100,7 @@ struct FinancialAdvisor: Sendable {
         Rules:
         - health_score: 0-100 (0=critical, 50=needs improvement, 75=good, 90+=excellent)
         - Focus on actionable advice, not generic platitudes
-        - If savings rate < 20%, flag it as a concern
+        - If savings rate < \(Int(persona.savingsTarget * 100))%, flag it as a concern
         - Highlight any month-over-month spending increases > 30%
         - Provide max 3 action items, ordered by impact
         - Only include category_insights for categories with notable observations

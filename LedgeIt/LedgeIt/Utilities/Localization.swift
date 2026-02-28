@@ -103,6 +103,44 @@ struct L10n: Sendable {
     var dismiss: String { s("Dismiss", "忽略") }
     var complete: String { s("Complete", "完成") }
 
+    // MARK: - AI Advisor
+
+    var aiAdvisor: String { s("AI Advisor", "AI 理財顧問") }
+    var aiAdvisorSidebar: String { s("AI Advisor", "AI 顧問") }
+    var aiAdvisorSubtitle: String { s("Choose your financial planning style", "選擇您的理財風格") }
+    var conservative: String { s("Conservative", "保守型") }
+    var moderate: String { s("Moderate", "穩健型") }
+    var aggressive: String { s("Aggressive", "積極型") }
+    var custom: String { s("Custom", "自訂") }
+    var conservativeDesc: String { s("Maximize savings, minimize risk", "最大化儲蓄，最小化風險") }
+    var moderateDesc: String { s("Balanced lifestyle and savings", "平衡生活與儲蓄") }
+    var aggressiveDesc: String { s("Growth-focused, higher risk tolerance", "成長導向，較高風險承受度") }
+    var customDesc: String { s("Set your own targets", "設定您自己的目標") }
+    var savingsTargetLabel: String { s("Savings Target", "儲蓄目標") }
+    var riskLevel: String { s("Risk Level", "風險等級") }
+    var riskLow: String { s("Low", "低") }
+    var riskMedium: String { s("Medium", "中") }
+    var riskHigh: String { s("High", "高") }
+    var applyAndRegenerate: String { s("Apply & Regenerate Report", "套用並重新產生報告") }
+    var currentAdvisor: String { s("Current Advisor", "目前顧問") }
+    var categoryBudgets: String { s("Category Budget Hints", "類別預算參考") }
+    var ofIncome: String { s("of income", "收入占比") }
+
+    // MARK: - Transaction Verification
+
+    var editTransaction: String { s("Edit Transaction", "編輯交易") }
+    var amount: String { s("Amount", "金額") }
+    var merchant: String { s("Merchant", "商家") }
+    var category: String { s("Category", "類別") }
+    var date: String { s("Date", "日期") }
+    var type: String { s("Type", "類型") }
+    var flagIncorrect: String { s("Flag as Incorrect", "標記為不正確") }
+    var save: String { s("Save", "儲存") }
+    var cancel: String { s("Cancel", "取消") }
+    var highConfidence: String { s("High confidence", "高信心度") }
+    var mediumConfidence: String { s("Medium confidence", "中信心度") }
+    var lowConfidence: String { s("Low confidence", "低信心度") }
+
     // MARK: - Dashboard
 
     var spendingOverview: String { s("Spending Overview", "消費概覽") }
