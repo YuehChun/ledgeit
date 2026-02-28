@@ -4,6 +4,7 @@ import GRDB
 enum SidebarItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case transactions = "Transactions"
+    case review = "Review"
     case emails = "Emails"
     case calendar = "Calendar"
     case analysis = "Analysis"
@@ -17,6 +18,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "chart.pie.fill"
         case .transactions: return "creditcard.fill"
+        case .review: return "checkmark.circle.fill"
         case .emails: return "envelope.fill"
         case .calendar: return "calendar"
         case .analysis: return "chart.bar.doc.horizontal.fill"
@@ -47,6 +49,8 @@ struct ContentView: View {
                 Section(l10n.data) {
                     Label(l10n.transactions, systemImage: SidebarItem.transactions.icon)
                         .tag(SidebarItem.transactions)
+                    Label(l10n.review, systemImage: SidebarItem.review.icon)
+                        .tag(SidebarItem.review)
                     Label(l10n.emails, systemImage: SidebarItem.emails.icon)
                         .tag(SidebarItem.emails)
                     Label(l10n.calendar, systemImage: SidebarItem.calendar.icon)
@@ -89,6 +93,8 @@ struct ContentView: View {
                         DashboardView()
                     case .transactions:
                         TransactionListView()
+                    case .review:
+                        TransactionReviewView()
                     case .emails:
                         EmailListView()
                     case .calendar:
