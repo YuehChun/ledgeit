@@ -15,12 +15,20 @@ struct DashboardView: View {
     @State private var errorMessage: String?
     @State private var cancellable: AnyDatabaseCancellable?
     @State private var primaryCurrency: String = ""
+    @State private var budgetSummary: PersonalFinanceService.BudgetSummary?
+    @AppStorage("advisorPersonaId") private var personaId = "moderate"
+    @AppStorage("customSavingsTarget") private var customSavingsTarget = 0.20
+    @AppStorage("customRiskLevel") private var customRiskLevel = "medium"
+    @AppStorage("appLanguage") private var appLanguage = "en"
+    private var l10n: L10n { L10n(appLanguage) }
 
     var body: some View {
         ScrollView {
             if let summary {
                 VStack(alignment: .leading, spacing: 16) {
                     overviewCards(summary)
+
+                    spendingBudgetCard
 
                     if let velocity = spendingVelocity, velocity.isAlert {
                         velocityAlertBanner(velocity)
@@ -109,6 +117,13 @@ struct DashboardView: View {
             spendingVelocity = try service.getSpendingVelocity()
             upcomingBills = try service.getUpcomingBills()
 
+            let persona = AdvisorPersona.resolveWithVersions(
+                id: personaId,
+                customSavingsTarget: customSavingsTarget,
+                customRiskLevel: customRiskLevel
+            )
+            budgetSummary = try service.getBudgetSummary(year: year, month: month, savingsTarget: persona.savingsTarget)
+
             if let topCurrency = recentTransactions.first?.currency {
                 primaryCurrency = topCurrency
             }
@@ -126,6 +141,163 @@ struct DashboardView: View {
             StatCard(title: "Transactions", value: "\(summary.transactionCount)", subtitle: "this month", icon: "list.bullet.rectangle.fill", color: .blue)
             StatCard(title: "Net", value: fmt(summary.totalIncome - summary.totalSpending), subtitle: primaryCurrency, icon: "equal.circle.fill", color: summary.totalIncome >= summary.totalSpending ? .green : .orange)
         }
+    }
+
+    // MARK: - Spending Budget
+
+    @ViewBuilder
+    private var spendingBudgetCard: some View {
+        if let budget = budgetSummary {
+            VStack(spacing: 14) {
+                HStack {
+                    Image(systemName: "wallet.bifold.fill")
+                        .foregroundStyle(.blue)
+                    Text(l10n.spendingBudget)
+                        .font(.headline)
+                    Spacer()
+                    Text("\(Int(budget.savingsTarget * 100))% \(l10n.savingsRate)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.blue.opacity(0.1), in: Capsule())
+                }
+
+                HStack(spacing: 20) {
+                    // Left: Disposable Balance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(l10n.disposableBalance)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("\(budget.currency) \(String(format: "%.0f", budget.disposableBalance))")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .monospacedDigit()
+                            .foregroundStyle(budget.disposableBalance >= 0 ? Color.primary : Color.red)
+                        if budget.disposableBalance < 0 {
+                            Text(l10n.overBudgetBy("\(budget.currency) \(String(format: "%.0f", abs(budget.disposableBalance)))"))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text("\(l10n.ofBudget): \(budget.currency) \(String(format: "%.0f", budget.spendingBudget))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Divider().frame(height: 50)
+
+                    // Right: Daily Allowance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(l10n.dailyAllowance)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("\(budget.currency) \(String(format: "%.0f", budget.dailyAllowance))")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .monospacedDigit()
+                            .foregroundStyle(budgetHealthColor(budget))
+                        Text(l10n.perDayForDays(budget.daysRemaining))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // Budget usage progress bar
+                VStack(spacing: 4) {
+                    HStack {
+                        Text(l10n.budgetUsed)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(String(format: "%.0f", budget.spentSoFar)) / \(String(format: "%.0f", budget.spendingBudget))")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    GeometryReader { geo in
+                        let usedRatio = budget.spendingBudget > 0
+                            ? budget.spentSoFar / budget.spendingBudget : 0
+                        let clampedRatio = min(max(usedRatio, 0), 1.0)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(.quaternary)
+                                .frame(height: 6)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(budgetBarColor(usedRatio))
+                                .frame(width: geo.size.width * clampedRatio, height: 6)
+                        }
+                    }
+                    .frame(height: 6)
+                }
+
+                // Month progress
+                VStack(spacing: 4) {
+                    HStack {
+                        Text(l10n.monthProgress)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        let dayOfMonth = budget.daysInMonth - budget.daysRemaining + 1
+                        Text("\(dayOfMonth) / \(budget.daysInMonth)")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                    }
+                    GeometryReader { geo in
+                        let dayOfMonth = budget.daysInMonth - budget.daysRemaining + 1
+                        let ratio = Double(dayOfMonth) / Double(budget.daysInMonth)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.quaternary)
+                                .frame(height: 3)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.secondary.opacity(0.5))
+                                .frame(width: geo.size.width * ratio, height: 3)
+                        }
+                    }
+                    .frame(height: 3)
+                }
+            }
+            .padding(14)
+            .background(.background.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        } else {
+            HStack(spacing: 12) {
+                Image(systemName: "wallet.bifold")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(l10n.spendingBudget)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                    Text(l10n.waitingForIncomeDesc)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(14)
+            .background(.background.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func budgetHealthColor(_ budget: PersonalFinanceService.BudgetSummary) -> Color {
+        guard budget.spendingBudget > 0 else { return .red }
+        let remainingRatio = budget.disposableBalance / budget.spendingBudget
+        let timeRatio = Double(budget.daysRemaining) / Double(budget.daysInMonth)
+        if remainingRatio >= timeRatio * 0.8 { return .green }
+        if remainingRatio >= timeRatio * 0.4 { return .orange }
+        return .red
+    }
+
+    private func budgetBarColor(_ usedRatio: Double) -> Color {
+        if usedRatio <= 0.6 { return .green }
+        if usedRatio <= 0.85 { return .orange }
+        return .red
     }
 
     // MARK: - Velocity Alert

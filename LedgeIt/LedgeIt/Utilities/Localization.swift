@@ -192,6 +192,21 @@ struct L10n: Sendable {
     var income: String { s("Income", "收入") }
     var spending: String { s("Spending", "支出") }
     var savingsRate: String { s("Savings Rate", "儲蓄率") }
+    var spendingBudget: String { s("Spending Budget", "消費預算") }
+    var disposableBalance: String { s("Disposable Balance", "可動用餘額") }
+    var dailyAllowance: String { s("Daily Allowance", "每日可消費") }
+    var ofBudget: String { s("of budget this month", "本月預算") }
+    func perDayForDays(_ days: Int) -> String {
+        s("per day for \(days) remaining days", "剩餘 \(days) 天，每日額度")
+    }
+    var overBudget: String { s("Over Budget", "超出預算") }
+    func overBudgetBy(_ amount: String) -> String {
+        s("Over budget by \(amount)", "超出預算 \(amount)")
+    }
+    var waitingForIncome: String { s("Waiting for income data", "等待收入資料") }
+    var waitingForIncomeDesc: String { s("Income transactions will appear after email sync.", "收入交易紀錄將在郵件同步後出現。") }
+    var budgetUsed: String { s("Budget Used", "已使用預算") }
+    var monthProgress: String { s("Month Progress", "月份進度") }
 
     // MARK: - Onboarding
 

@@ -296,6 +296,83 @@ final class PersonalFinanceService: Sendable {
         }
     }
 
+    // MARK: - Budget Summary
+
+    struct BudgetSummary: Sendable {
+        let monthlyIncome: Double
+        let savingsTarget: Double
+        let savingsReserve: Double
+        let unpaidBills: Double
+        let spendingBudget: Double
+        let spentSoFar: Double
+        let disposableBalance: Double
+        let daysRemaining: Int
+        let daysInMonth: Int
+        let dailyAllowance: Double
+        let currency: String
+    }
+
+    func getBudgetSummary(year: Int, month: Int, savingsTarget: Double) throws -> BudgetSummary? {
+        try database.db.read { db in
+            let startDate = String(format: "%04d-%02d-01", year, month)
+            let endMonth = month == 12 ? 1 : month + 1
+            let endYear = month == 12 ? year + 1 : year
+            let endDate = String(format: "%04d-%02d-01", endYear, endMonth)
+
+            let totalIncome = try Double.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(amount), 0) FROM transactions
+                WHERE transaction_date >= ? AND transaction_date < ?
+                AND type = 'credit'
+                """, arguments: [startDate, endDate]) ?? 0
+
+            guard totalIncome > 0 else { return nil }
+
+            let totalSpending = try Double.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
+                WHERE transaction_date >= ? AND transaction_date < ?
+                AND (type = 'debit' OR type IS NULL)
+                """, arguments: [startDate, endDate]) ?? 0
+
+            let unpaidBills = try Double.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(amount_due), 0) FROM credit_card_bills
+                WHERE due_date >= ? AND due_date < ?
+                AND is_paid = 0
+                """, arguments: [startDate, endDate]) ?? 0
+
+            let currency = try String.fetchOne(db, sql: """
+                SELECT currency FROM transactions
+                WHERE transaction_date >= ? AND transaction_date < ?
+                LIMIT 1
+                """, arguments: [startDate, endDate]) ?? "TWD"
+
+            let calendar = Calendar.current
+            let now = Date()
+            let range = calendar.range(of: .day, in: .month, for: now)!
+            let daysInMonth = range.count
+            let today = calendar.component(.day, from: now)
+            let daysRemaining = max(1, daysInMonth - today + 1)
+
+            let savingsReserve = totalIncome * savingsTarget
+            let spendingBudget = totalIncome - savingsReserve - unpaidBills
+            let disposable = spendingBudget - totalSpending
+            let daily = max(0, disposable) / Double(daysRemaining)
+
+            return BudgetSummary(
+                monthlyIncome: totalIncome,
+                savingsTarget: savingsTarget,
+                savingsReserve: savingsReserve,
+                unpaidBills: unpaidBills,
+                spendingBudget: max(0, spendingBudget),
+                spentSoFar: totalSpending,
+                disposableBalance: disposable,
+                daysRemaining: daysRemaining,
+                daysInMonth: daysInMonth,
+                dailyAllowance: daily,
+                currency: currency
+            )
+        }
+    }
+
     func getAllTransactions(category: String? = nil, searchText: String? = nil) throws -> [Transaction] {
         try database.db.read { db in
             var query = Transaction.all()
