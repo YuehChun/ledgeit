@@ -185,6 +185,29 @@ struct L10n: Sendable {
     var mediumConfidence: String { s("Medium confidence", "中信心度") }
     var lowConfidence: String { s("Low confidence", "低信心度") }
 
+    // MARK: - Transaction Review
+
+    var review: String { s("Review", "審核") }
+    var transactionReview: String { s("Transaction Review", "交易審核") }
+    func unreviewedCount(_ count: Int) -> String {
+        s("\(count) unreviewed transactions", "\(count) 筆未審核交易")
+    }
+    var markAllReviewed: String { s("Mark All Reviewed", "全部標為已審核") }
+    var markReviewed: String { s("Mark Reviewed", "標為已審核") }
+    var viewOriginalEmail: String { s("View original email", "查看原始郵件") }
+    var hideOriginalEmail: String { s("Hide original email", "隱藏原始郵件") }
+    var deleteTransaction: String { s("Delete", "刪除") }
+    var deleteConfirmTitle: String { s("Delete Transaction?", "刪除交易？") }
+    var deleteConfirmMessage: String { s("This transaction will be permanently removed from your records.", "此交易將從您的記錄中永久刪除。") }
+    var filterUnreviewed: String { s("Unreviewed", "未審核") }
+    var filterReviewed: String { s("Reviewed", "已審核") }
+    var noUnreviewedTransactions: String { s("All Caught Up", "全部完成") }
+    var noUnreviewedDescription: String { s("No transactions need review right now.", "目前沒有需要審核的交易。") }
+    var fromEmail: String { s("from email", "來自郵件") }
+    func transactionsFromEmail(_ count: Int) -> String {
+        s("\(count) transaction\(count == 1 ? "" : "s")", "\(count) 筆交易")
+    }
+
     // MARK: - Dashboard
 
     var spendingOverview: String { s("Spending Overview", "消費概覽") }
