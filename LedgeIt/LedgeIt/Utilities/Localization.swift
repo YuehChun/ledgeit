@@ -203,7 +203,8 @@ struct L10n: Sendable {
     var filterReviewed: String { s("Reviewed", "已審核") }
     var noUnreviewedTransactions: String { s("All Caught Up", "全部完成") }
     var noUnreviewedDescription: String { s("No transactions need review right now.", "目前沒有需要審核的交易。") }
-    var fromEmail: String { s("from email", "來自郵件") }
+    var unknownSender: String { s("Unknown sender", "未知寄件者") }
+    var noSubject: String { s("No subject", "無主旨") }
     func transactionsFromEmail(_ count: Int) -> String {
         s("\(count) transaction\(count == 1 ? "" : "s")", "\(count) 筆交易")
     }

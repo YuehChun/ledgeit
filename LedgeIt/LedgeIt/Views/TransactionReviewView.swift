@@ -7,11 +7,13 @@ struct TransactionReviewView: View {
 
     @State private var groupedData: [EmailGroup] = []
     @State private var cancellable: AnyDatabaseCancellable?
+    @State private var countCancellable: AnyDatabaseCancellable?
     @State private var searchText = ""
     @State private var filterMode: FilterMode = .unreviewed
     @State private var expandedEmails: Set<String> = []
     @State private var deleteTarget: Transaction?
     @State private var showDeleteConfirm = false
+    @State private var totalUnreviewed: Int = 0
 
     enum FilterMode: String, CaseIterable {
         case unreviewed, reviewed, all
@@ -25,8 +27,7 @@ struct TransactionReviewView: View {
                     Text(l10n.transactionReview)
                         .font(.title2)
                         .fontWeight(.bold)
-                    let unreviewedTotal = groupedData.filter { !$0.isAllReviewed }.reduce(0) { $0 + $1.transactions.count }
-                    Text(l10n.unreviewedCount(unreviewedTotal))
+                    Text(l10n.unreviewedCount(totalUnreviewed))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -106,7 +107,7 @@ struct TransactionReviewView: View {
         .onAppear { startObservation() }
         .onChange(of: searchText) { _, _ in startObservation() }
         .onChange(of: filterMode) { _, _ in startObservation() }
-        .onDisappear { cancellable?.cancel() }
+        .onDisappear { cancellable?.cancel(); countCancellable?.cancel() }
         .alert(l10n.deleteConfirmTitle, isPresented: $showDeleteConfirm, presenting: deleteTarget) { tx in
             Button(l10n.deleteTransaction, role: .destructive) {
                 deleteTransaction(tx)
@@ -144,6 +145,7 @@ struct TransactionReviewView: View {
 
             let transactions = try txQuery
                 .order(Transaction.Columns.transactionDate.desc)
+                .limit(500)
                 .fetchAll(db)
 
             // Group by emailId
@@ -180,6 +182,18 @@ struct TransactionReviewView: View {
             print("Review observation error: \(error)")
         } onChange: { newData in
             groupedData = newData
+        }
+
+        let countObservation = ValueObservation.tracking { db -> Int in
+            try Transaction.filter(Transaction.Columns.isReviewed == false).fetchCount(db)
+        }
+        countCancellable = countObservation.start(
+            in: AppDatabase.shared.db,
+            scheduling: .immediate
+        ) { error in
+            print("Count observation error: \(error)")
+        } onChange: { count in
+            totalUnreviewed = count
         }
     }
 
@@ -219,12 +233,10 @@ struct TransactionReviewView: View {
     }
 
     private func markAllReviewed() {
-        let allIds = groupedData.flatMap { $0.transactions.compactMap { $0.id } }
-        guard !allIds.isEmpty else { return }
         do {
             try AppDatabase.shared.db.write { db in
                 try Transaction
-                    .filter(allIds.contains(Transaction.Columns.id))
+                    .filter(Transaction.Columns.isReviewed == false)
                     .updateAll(db, Transaction.Columns.isReviewed.set(to: true))
             }
         } catch {
@@ -270,11 +282,11 @@ private struct EmailGroupCard: View {
                     .font(.callout)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(group.email?.sender ?? "Unknown sender")
+                    Text(group.email?.sender ?? l10n.unknownSender)
                         .font(.callout)
                         .fontWeight(.medium)
                         .lineLimit(1)
-                    Text(group.email?.subject ?? "No subject")
+                    Text(group.email?.subject ?? l10n.noSubject)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -371,6 +383,7 @@ private struct EmailGroupCard: View {
                 Text(bodyText)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .lineLimit(80)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.background.tertiary)
