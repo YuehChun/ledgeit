@@ -18,6 +18,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
     var confidence: Double?
     var rawExtraction: String?
     var createdAt: String?
+    var isReviewed: Bool = false
 
     static let databaseTableName = "transactions"
 
@@ -38,6 +39,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         static let confidence = Column(CodingKeys.confidence)
         static let rawExtraction = Column(CodingKeys.rawExtraction)
         static let createdAt = Column(CodingKeys.createdAt)
+        static let isReviewed = Column(CodingKeys.isReviewed)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -57,6 +59,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         case confidence
         case rawExtraction = "raw_extraction"
         case createdAt = "created_at"
+        case isReviewed = "is_reviewed"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

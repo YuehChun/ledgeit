@@ -179,5 +179,13 @@ struct DatabaseMigrations {
             }
             try db.create(index: "idx_prompt_versions_active", on: "prompt_versions", columns: ["is_active"])
         }
+
+        // MARK: - v7: Transaction review support
+        migrator.registerMigration("v7") { db in
+            try db.alter(table: "transactions") { t in
+                t.add(column: "is_reviewed", .integer).notNull().defaults(to: false)
+            }
+            try db.create(index: "idx_transactions_is_reviewed", on: "transactions", columns: ["is_reviewed"])
+        }
     }
 }
