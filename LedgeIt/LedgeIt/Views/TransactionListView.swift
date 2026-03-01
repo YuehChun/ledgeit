@@ -100,7 +100,7 @@ struct TransactionListView: View {
         let search = searchText.isEmpty ? nil : searchText
 
         let observation = ValueObservation.tracking { db -> [Transaction] in
-            var query = Transaction.all()
+            var query = Transaction.filter(Transaction.Columns.deletedAt == nil)
             if let category {
                 query = query.filter(Transaction.Columns.category == category)
             }

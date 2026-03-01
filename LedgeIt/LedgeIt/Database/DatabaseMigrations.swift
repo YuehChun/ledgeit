@@ -187,5 +187,13 @@ struct DatabaseMigrations {
             }
             try db.create(index: "idx_transactions_is_reviewed", on: "transactions", columns: ["is_reviewed"])
         }
+
+        // MARK: - v8: Soft delete support
+        migrator.registerMigration("v8") { db in
+            try db.alter(table: "transactions") { t in
+                t.add(column: "deleted_at", .text)
+            }
+            try db.create(index: "idx_transactions_deleted_at", on: "transactions", columns: ["deleted_at"])
+        }
     }
 }

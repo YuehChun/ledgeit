@@ -201,8 +201,15 @@ struct L10n: Sendable {
     var deleteConfirmMessage: String { s("This transaction will be permanently removed from your records.", "此交易將從您的記錄中永久刪除。") }
     var filterUnreviewed: String { s("Unreviewed", "未審核") }
     var filterReviewed: String { s("Reviewed", "已審核") }
+    var filterDeleted: String { s("Deleted", "已刪除") }
     var noUnreviewedTransactions: String { s("All Caught Up", "全部完成") }
     var noUnreviewedDescription: String { s("No transactions need review right now.", "目前沒有需要審核的交易。") }
+    var noDeletedTransactions: String { s("No Deleted Transactions", "沒有已刪除的交易") }
+    var noDeletedDescription: String { s("Deleted transactions will appear here for 7 days before permanent removal.", "已刪除的交易會在此保留 7 天後永久移除。") }
+    var restore: String { s("Restore", "復原") }
+    func daysUntilPurge(_ days: Int) -> String {
+        s("\(days)d left", "剩餘 \(days) 天")
+    }
     var unknownSender: String { s("Unknown sender", "未知寄件者") }
     var noSubject: String { s("No subject", "無主旨") }
     func transactionsFromEmail(_ count: Int) -> String {

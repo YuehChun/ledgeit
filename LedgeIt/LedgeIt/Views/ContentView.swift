@@ -43,29 +43,29 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $selectedItem) {
                 Section(l10n.overview) {
-                    Label(l10n.dashboard, systemImage: SidebarItem.dashboard.icon)
+                    sidebarRow(l10n.dashboard, icon: SidebarItem.dashboard.icon)
                         .tag(SidebarItem.dashboard)
                 }
                 Section(l10n.data) {
-                    Label(l10n.transactions, systemImage: SidebarItem.transactions.icon)
+                    sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
                         .tag(SidebarItem.transactions)
-                    Label(l10n.review, systemImage: SidebarItem.review.icon)
+                    sidebarRow(l10n.review, icon: SidebarItem.review.icon)
                         .tag(SidebarItem.review)
-                    Label(l10n.emails, systemImage: SidebarItem.emails.icon)
+                    sidebarRow(l10n.emails, icon: SidebarItem.emails.icon)
                         .tag(SidebarItem.emails)
-                    Label(l10n.calendar, systemImage: SidebarItem.calendar.icon)
+                    sidebarRow(l10n.calendar, icon: SidebarItem.calendar.icon)
                         .tag(SidebarItem.calendar)
                 }
                 Section(l10n.analysisSection) {
-                    Label(l10n.analysis, systemImage: SidebarItem.analysis.icon)
+                    sidebarRow(l10n.analysis, icon: SidebarItem.analysis.icon)
                         .tag(SidebarItem.analysis)
-                    Label(l10n.goals, systemImage: SidebarItem.goals.icon)
+                    sidebarRow(l10n.goals, icon: SidebarItem.goals.icon)
                         .tag(SidebarItem.goals)
                 }
                 Section {
-                    Label(l10n.settings, systemImage: SidebarItem.settings.icon)
+                    sidebarRow(l10n.settings, icon: SidebarItem.settings.icon)
                         .tag(SidebarItem.settings)
-                    Label(l10n.aiAdvisorSidebar, systemImage: SidebarItem.advisor.icon)
+                    sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
                         .tag(SidebarItem.advisor)
                 }
             }
@@ -125,6 +125,14 @@ struct ContentView: View {
         }
         .onDisappear {
             syncTimer?.invalidate()
+        }
+    }
+
+    private func sidebarRow(_ title: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .frame(width: 20)
+            Text(title)
         }
     }
 

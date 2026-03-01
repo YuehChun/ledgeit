@@ -19,6 +19,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
     var rawExtraction: String?
     var createdAt: String?
     var isReviewed: Bool = false
+    var deletedAt: String?
 
     static let databaseTableName = "transactions"
 
@@ -40,6 +41,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         static let rawExtraction = Column(CodingKeys.rawExtraction)
         static let createdAt = Column(CodingKeys.createdAt)
         static let isReviewed = Column(CodingKeys.isReviewed)
+        static let deletedAt = Column(CodingKeys.deletedAt)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -60,6 +62,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         case rawExtraction = "raw_extraction"
         case createdAt = "created_at"
         case isReviewed = "is_reviewed"
+        case deletedAt = "deleted_at"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

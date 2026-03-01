@@ -11,12 +11,10 @@ struct TransactionReviewView: View {
     @State private var searchText = ""
     @State private var filterMode: FilterMode = .unreviewed
     @State private var expandedEmails: Set<String> = []
-    @State private var deleteTarget: Transaction?
-    @State private var showDeleteConfirm = false
     @State private var totalUnreviewed: Int = 0
 
     enum FilterMode: String, CaseIterable {
-        case unreviewed, reviewed, all
+        case unreviewed, reviewed, deleted, all
     }
 
     var body: some View {
@@ -36,7 +34,7 @@ struct TransactionReviewView: View {
                     markAllReviewed()
                 }
                 .buttonStyle(.bordered)
-                .disabled(groupedData.allSatisfy { $0.isAllReviewed })
+                .disabled(filterMode == .deleted || groupedData.allSatisfy { $0.isAllReviewed })
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -61,6 +59,7 @@ struct TransactionReviewView: View {
                 Picker("Filter", selection: $filterMode) {
                     Text(l10n.filterUnreviewed).tag(FilterMode.unreviewed)
                     Text(l10n.filterReviewed).tag(FilterMode.reviewed)
+                    Text(l10n.filterDeleted).tag(FilterMode.deleted)
                     Text(l10n.all).tag(FilterMode.all)
                 }
                 .frame(width: 140)
@@ -77,11 +76,19 @@ struct TransactionReviewView: View {
 
             // Content
             if groupedData.isEmpty {
-                ContentUnavailableView(
-                    l10n.noUnreviewedTransactions,
-                    systemImage: "checkmark.seal.fill",
-                    description: Text(l10n.noUnreviewedDescription)
-                )
+                if filterMode == .deleted {
+                    ContentUnavailableView(
+                        l10n.noDeletedTransactions,
+                        systemImage: "trash.slash",
+                        description: Text(l10n.noDeletedDescription)
+                    )
+                } else {
+                    ContentUnavailableView(
+                        l10n.noUnreviewedTransactions,
+                        systemImage: "checkmark.seal.fill",
+                        description: Text(l10n.noUnreviewedDescription)
+                    )
+                }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -90,12 +97,11 @@ struct TransactionReviewView: View {
                                 group: group,
                                 l10n: l10n,
                                 isExpanded: expandedEmails.contains(group.id),
+                                isDeletedView: filterMode == .deleted,
                                 onToggleExpand: { toggleExpand(group.id) },
                                 onMarkReviewed: { markEmailReviewed(group) },
-                                onDeleteTransaction: { tx in
-                                    deleteTarget = tx
-                                    showDeleteConfirm = true
-                                }
+                                onDeleteTransaction: { tx in softDeleteTransaction(tx) },
+                                onRestoreTransaction: { tx in restoreTransaction(tx) }
                             )
                         }
                     }
@@ -104,18 +110,13 @@ struct TransactionReviewView: View {
             }
         }
         .navigationTitle(l10n.review)
-        .onAppear { startObservation() }
+        .onAppear {
+            purgeExpiredDeletes()
+            startObservation()
+        }
         .onChange(of: searchText) { _, _ in startObservation() }
         .onChange(of: filterMode) { _, _ in startObservation() }
         .onDisappear { cancellable?.cancel(); countCancellable?.cancel() }
-        .alert(l10n.deleteConfirmTitle, isPresented: $showDeleteConfirm, presenting: deleteTarget) { tx in
-            Button(l10n.deleteTransaction, role: .destructive) {
-                deleteTransaction(tx)
-            }
-            Button(l10n.cancel, role: .cancel) {}
-        } message: { _ in
-            Text(l10n.deleteConfirmMessage)
-        }
     }
 
     // MARK: - Observation
@@ -128,11 +129,15 @@ struct TransactionReviewView: View {
             var txQuery = Transaction.all()
             switch filter {
             case .unreviewed:
-                txQuery = txQuery.filter(Transaction.Columns.isReviewed == false)
+                txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
+                    .filter(Transaction.Columns.isReviewed == false)
             case .reviewed:
-                txQuery = txQuery.filter(Transaction.Columns.isReviewed == true)
+                txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
+                    .filter(Transaction.Columns.isReviewed == true)
+            case .deleted:
+                txQuery = txQuery.filter(Transaction.Columns.deletedAt != nil)
             case .all:
-                break
+                txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
             }
 
             if let search {
@@ -148,10 +153,8 @@ struct TransactionReviewView: View {
                 .limit(500)
                 .fetchAll(db)
 
-            // Group by emailId
             let grouped = Dictionary(grouping: transactions) { $0.emailId ?? "no-email" }
 
-            // Fetch associated emails
             let emailIds = Set(transactions.compactMap { $0.emailId })
             let emails: [String: Email]
             if !emailIds.isEmpty {
@@ -163,7 +166,6 @@ struct TransactionReviewView: View {
                 emails = [:]
             }
 
-            // Build groups sorted by most recent transaction date
             return grouped.map { emailId, txs in
                 let email = emails[emailId]
                 return EmailGroup(
@@ -185,7 +187,10 @@ struct TransactionReviewView: View {
         }
 
         let countObservation = ValueObservation.tracking { db -> Int in
-            try Transaction.filter(Transaction.Columns.isReviewed == false).fetchCount(db)
+            try Transaction
+                .filter(Transaction.Columns.isReviewed == false)
+                .filter(Transaction.Columns.deletedAt == nil)
+                .fetchCount(db)
         }
         countCancellable = countObservation.start(
             in: AppDatabase.shared.db,
@@ -207,14 +212,44 @@ struct TransactionReviewView: View {
         }
     }
 
-    private func deleteTransaction(_ tx: Transaction) {
+    private func softDeleteTransaction(_ tx: Transaction) {
+        guard let id = tx.id else { return }
+        let now = ISO8601DateFormatter().string(from: Date())
+        do {
+            try AppDatabase.shared.db.write { db in
+                try Transaction
+                    .filter(Transaction.Columns.id == id)
+                    .updateAll(db, Transaction.Columns.deletedAt.set(to: now))
+            }
+        } catch {
+            print("Failed to soft-delete transaction: \(error)")
+        }
+    }
+
+    private func restoreTransaction(_ tx: Transaction) {
         guard let id = tx.id else { return }
         do {
             try AppDatabase.shared.db.write { db in
-                _ = try Transaction.deleteOne(db, id: id)
+                try Transaction
+                    .filter(Transaction.Columns.id == id)
+                    .updateAll(db, Transaction.Columns.deletedAt.set(to: nil as String?))
             }
         } catch {
-            print("Failed to delete transaction: \(error)")
+            print("Failed to restore transaction: \(error)")
+        }
+    }
+
+    private func purgeExpiredDeletes() {
+        let sevenDaysAgo = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-7 * 24 * 3600))
+        do {
+            try AppDatabase.shared.db.write { db in
+                try Transaction
+                    .filter(Transaction.Columns.deletedAt != nil)
+                    .filter(Transaction.Columns.deletedAt < sevenDaysAgo)
+                    .deleteAll(db)
+            }
+        } catch {
+            print("Failed to purge expired deletes: \(error)")
         }
     }
 
@@ -237,6 +272,7 @@ struct TransactionReviewView: View {
             try AppDatabase.shared.db.write { db in
                 try Transaction
                     .filter(Transaction.Columns.isReviewed == false)
+                    .filter(Transaction.Columns.deletedAt == nil)
                     .updateAll(db, Transaction.Columns.isReviewed.set(to: true))
             }
         } catch {
@@ -269,9 +305,11 @@ private struct EmailGroupCard: View {
     let group: EmailGroup
     let l10n: L10n
     let isExpanded: Bool
+    let isDeletedView: Bool
     let onToggleExpand: () -> Void
     let onMarkReviewed: () -> Void
     let onDeleteTransaction: (Transaction) -> Void
+    let onRestoreTransaction: (Transaction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -309,49 +347,13 @@ private struct EmailGroupCard: View {
 
             // Transactions
             ForEach(group.transactions) { tx in
-                HStack(spacing: 8) {
-                    if let category = tx.category {
-                        CategoryIcon(category: category, size: 22)
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(tx.merchant ?? "Unknown")
-                            .font(.callout)
-                            .fontWeight(.medium)
-                            .lineLimit(1)
-                        HStack(spacing: 6) {
-                            if let date = tx.transactionDate {
-                                Text(date)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let category = tx.category {
-                                CategoryBadge(category: category)
-                            }
-                            if tx.isReviewed {
-                                Text("\u{2713}")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .foregroundStyle(.green)
-                                    .background(.green.opacity(0.1), in: Capsule())
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 8)
-
-                    AmountText(amount: tx.amount, currency: tx.currency, type: tx.type)
-
-                    Button(role: .destructive) {
-                        onDeleteTransaction(tx)
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                }
-                .padding(.vertical, 1)
+                TransactionRow(
+                    tx: tx,
+                    l10n: l10n,
+                    isDeletedView: isDeletedView,
+                    onDelete: { onDeleteTransaction(tx) },
+                    onRestore: { onRestoreTransaction(tx) }
+                )
             }
 
             // Actions row
@@ -365,11 +367,11 @@ private struct EmailGroupCard: View {
                     )
                     .font(.caption)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Spacer()
 
-                if !group.isAllReviewed {
+                if !isDeletedView && !group.isAllReviewed {
                     Button(l10n.markReviewed) {
                         onMarkReviewed()
                     }
@@ -394,5 +396,99 @@ private struct EmailGroupCard: View {
         .padding(14)
         .background(.background.secondary)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+// MARK: - Transaction Row
+
+private struct TransactionRow: View {
+    let tx: Transaction
+    let l10n: L10n
+    let isDeletedView: Bool
+    let onDelete: () -> Void
+    let onRestore: () -> Void
+
+    private var daysLeft: Int? {
+        guard let deletedAt = tx.deletedAt,
+              let date = ISO8601DateFormatter().date(from: deletedAt) else { return nil }
+        let purgeDate = date.addingTimeInterval(7 * 24 * 3600)
+        let remaining = Calendar.current.dateComponents([.day], from: Date(), to: purgeDate).day ?? 0
+        return max(0, remaining)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let category = tx.category {
+                CategoryIcon(category: category, size: 22)
+                    .opacity(isDeletedView ? 0.4 : 1)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tx.merchant ?? "Unknown")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .strikethrough(isDeletedView, color: .red)
+                    .opacity(isDeletedView ? 0.5 : 1)
+                HStack(spacing: 6) {
+                    if let date = tx.transactionDate {
+                        Text(date)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let category = tx.category {
+                        CategoryBadge(category: category)
+                    }
+                    if tx.isReviewed && !isDeletedView {
+                        Text("\u{2713}")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .foregroundStyle(.green)
+                            .background(.green.opacity(0.1), in: Capsule())
+                    }
+                    if let days = daysLeft, isDeletedView {
+                        Text(l10n.daysUntilPurge(days))
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .foregroundStyle(.orange)
+                            .background(.orange.opacity(0.1), in: Capsule())
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            AmountText(amount: tx.amount, currency: tx.currency, type: tx.type)
+                .opacity(isDeletedView ? 0.4 : 1)
+
+            // Action button
+            if isDeletedView {
+                Button(l10n.restore) {
+                    onRestore()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.blue)
+            } else {
+                Button {
+                    onDelete()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 13))
+                        Text(l10n.deleteTransaction)
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.red, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

@@ -49,25 +49,29 @@ final class PersonalFinanceService: Sendable {
         return try database.db.read { db in
             let totalSpending = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(amount), 0) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND (type = 'debit' OR type IS NULL)
                 """, arguments: [startDate, endDate]) ?? 0
 
             let totalIncome = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(amount), 0) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND type = 'credit'
                 """, arguments: [startDate, endDate]) ?? 0
 
             let transactionCount = try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 """, arguments: [startDate, endDate]) ?? 0
 
             let categoryRows = try Row.fetchAll(db, sql: """
                 SELECT category, SUM(amount) as total, COUNT(*) as cnt
                 FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND category IS NOT NULL
                 GROUP BY category
                 ORDER BY total DESC
@@ -88,7 +92,8 @@ final class PersonalFinanceService: Sendable {
             let merchantRows = try Row.fetchAll(db, sql: """
                 SELECT merchant, SUM(amount) as total, COUNT(*) as cnt
                 FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND merchant IS NOT NULL
                 GROUP BY merchant
                 ORDER BY total DESC
@@ -130,13 +135,15 @@ final class PersonalFinanceService: Sendable {
 
                 let spending = try Double.fetchOne(db, sql: """
                     SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
-                    WHERE transaction_date >= ? AND transaction_date < ?
+                    WHERE deleted_at IS NULL
+                    AND transaction_date >= ? AND transaction_date < ?
                     AND (type = 'debit' OR type IS NULL)
                     """, arguments: [startDate, endDate]) ?? 0
 
                 let income = try Double.fetchOne(db, sql: """
                     SELECT COALESCE(SUM(amount), 0) FROM transactions
-                    WHERE transaction_date >= ? AND transaction_date < ?
+                    WHERE deleted_at IS NULL
+                    AND transaction_date >= ? AND transaction_date < ?
                     AND type = 'credit'
                     """, arguments: [startDate, endDate]) ?? 0
 
@@ -155,6 +162,7 @@ final class PersonalFinanceService: Sendable {
     func getRecentTransactions(limit: Int = 20) throws -> [Transaction] {
         try database.db.read { db in
             try Transaction
+                .filter(Transaction.Columns.deletedAt == nil)
                 .order(Transaction.Columns.transactionDate.desc)
                 .limit(limit)
                 .fetchAll(db)
@@ -181,7 +189,8 @@ final class PersonalFinanceService: Sendable {
                        COUNT(DISTINCT strftime('%Y-%m', transaction_date)) as months,
                        category
                 FROM transactions
-                WHERE merchant IS NOT NULL
+                WHERE deleted_at IS NULL
+                AND merchant IS NOT NULL
                 AND transaction_date IS NOT NULL
                 AND (type = 'debit' OR type IS NULL)
                 GROUP BY merchant, currency
@@ -222,7 +231,8 @@ final class PersonalFinanceService: Sendable {
 
             let currentWeek = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
-                WHERE transaction_date >= ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ?
                 AND (type = 'debit' OR type IS NULL)
                 """, arguments: [String(weekStartStr)]) ?? 0
 
@@ -232,7 +242,8 @@ final class PersonalFinanceService: Sendable {
 
             let historicalTotal = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND (type = 'debit' OR type IS NULL)
                 """, arguments: [String(twelveWeeksAgoStr), String(weekStartStr)]) ?? 0
 
@@ -321,7 +332,8 @@ final class PersonalFinanceService: Sendable {
 
             let totalIncome = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(amount), 0) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND type = 'credit'
                 """, arguments: [startDate, endDate]) ?? 0
 
@@ -329,7 +341,8 @@ final class PersonalFinanceService: Sendable {
 
             let totalSpending = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 AND (type = 'debit' OR type IS NULL)
                 """, arguments: [startDate, endDate]) ?? 0
 
@@ -341,7 +354,8 @@ final class PersonalFinanceService: Sendable {
 
             let currency = try String.fetchOne(db, sql: """
                 SELECT currency FROM transactions
-                WHERE transaction_date >= ? AND transaction_date < ?
+                WHERE deleted_at IS NULL
+                AND transaction_date >= ? AND transaction_date < ?
                 LIMIT 1
                 """, arguments: [startDate, endDate]) ?? "TWD"
 
@@ -375,7 +389,7 @@ final class PersonalFinanceService: Sendable {
 
     func getAllTransactions(category: String? = nil, searchText: String? = nil) throws -> [Transaction] {
         try database.db.read { db in
-            var query = Transaction.all()
+            var query = Transaction.filter(Transaction.Columns.deletedAt == nil)
             if let category {
                 query = query.filter(Transaction.Columns.category == category)
             }
