@@ -53,9 +53,16 @@ actor ChatEngine {
             // Signal message started
             continuation.yield(.messageStarted(messageId))
 
-            // Build messages array: system + conversation history
-            var messages: [OpenRouterService.Message] = [.system(systemPrompt)]
-            messages.append(contentsOf: conversationHistory)
+            // Build raw messages array: system + conversation history
+            var rawMessages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
+            for msg in conversationHistory {
+                switch msg.content {
+                case .text(let str):
+                    rawMessages.append(["role": msg.role, "content": str])
+                case .parts:
+                    rawMessages.append(["role": msg.role, "content": ""])
+                }
+            }
 
             var fullResponse = ""
 
@@ -66,7 +73,7 @@ actor ChatEngine {
 
                 let stream = await router.streamComplete(
                     model: model,
-                    messages: messages,
+                    rawMessages: rawMessages,
                     tools: toolDefinitions
                 )
 
@@ -104,11 +111,24 @@ actor ChatEngine {
                     toolResult = "Error executing tool \(tc.name): \(error.localizedDescription)"
                 }
 
-                // Append assistant message (with any partial text) and tool result to messages
+                // Append assistant message WITH tool_calls metadata
+                var assistantMsg: [String: Any] = ["role": "assistant"]
                 if !iterationText.isEmpty {
-                    messages.append(.assistant(iterationText))
+                    assistantMsg["content"] = iterationText
                 }
-                messages.append(.user("Tool \(tc.name) returned: \(toolResult)"))
+                assistantMsg["tool_calls"] = [[
+                    "id": tc.id,
+                    "type": "function",
+                    "function": ["name": tc.name, "arguments": tc.arguments]
+                ] as [String: Any]]
+                rawMessages.append(assistantMsg)
+
+                // Append tool result with proper role and tool_call_id
+                rawMessages.append([
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": toolResult
+                ])
             }
 
             // Save the full assistant response to conversation history

@@ -124,6 +124,10 @@ struct ChatView: View {
                         break
                     case .textDelta(let delta):
                         if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
+                            // Clear tool-call placeholder if present
+                            if messages[idx].content.hasPrefix("Looking up ") {
+                                messages[idx].content = ""
+                            }
                             messages[idx].content += delta
                         }
                     case .toolCallStarted(let name):

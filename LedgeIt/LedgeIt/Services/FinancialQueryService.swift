@@ -38,6 +38,7 @@ actor FinancialQueryService {
 
             return try query
                 .order(Transaction.Columns.transactionDate.desc)
+                .limit(100)
                 .fetchAll(db)
         }
     }
@@ -203,7 +204,10 @@ actor FinancialQueryService {
 
     func searchTransactions(query: String) async throws -> [Transaction] {
         try database.db.read { db in
-            let pattern = "%\(query)%"
+            let escaped = query
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "%\(escaped)%"
             return try Transaction
                 .filter(Transaction.Columns.deletedAt == nil)
                 .filter(

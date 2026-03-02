@@ -302,6 +302,31 @@ actor OpenRouterService {
         temperature: Double = 0.3,
         maxTokens: Int = 4000
     ) -> AsyncStream<StreamEvent> {
+        let rawMessages = messages.map { msg -> [String: Any] in
+            let contentValue: Any
+            switch msg.content {
+            case .text(let str):
+                contentValue = str
+            case .parts(let parts):
+                contentValue = parts.map { part -> [String: Any] in
+                    var dict: [String: Any] = ["type": part.type]
+                    if let text = part.text { dict["text"] = text }
+                    if let imageUrl = part.imageUrl { dict["image_url"] = ["url": imageUrl.url] }
+                    return dict
+                }
+            }
+            return ["role": msg.role, "content": contentValue]
+        }
+        return streamComplete(model: model, rawMessages: rawMessages, tools: tools, temperature: temperature, maxTokens: maxTokens)
+    }
+
+    func streamComplete(
+        model: String,
+        rawMessages: [[String: Any]],
+        tools: [ToolDefinition] = [],
+        temperature: Double = 0.3,
+        maxTokens: Int = 4000
+    ) -> AsyncStream<StreamEvent> {
         AsyncStream { continuation in
             Task { [apiKey, session] in
                 do {
@@ -321,21 +346,7 @@ actor OpenRouterService {
 
                     var body: [String: Any] = [
                         "model": model,
-                        "messages": messages.map { msg -> [String: Any] in
-                            let contentValue: Any
-                            switch msg.content {
-                            case .text(let str):
-                                contentValue = str
-                            case .parts(let parts):
-                                contentValue = parts.map { part -> [String: Any] in
-                                    var dict: [String: Any] = ["type": part.type]
-                                    if let text = part.text { dict["text"] = text }
-                                    if let imageUrl = part.imageUrl { dict["image_url"] = ["url": imageUrl.url] }
-                                    return dict
-                                }
-                            }
-                            return ["role": msg.role, "content": contentValue]
-                        },
+                        "messages": rawMessages,
                         "temperature": temperature,
                         "max_tokens": maxTokens,
                         "stream": true
@@ -357,21 +368,21 @@ actor OpenRouterService {
                         return
                     }
 
-                    var toolCallId = ""
-                    var toolCallName = ""
-                    var toolCallArgs = ""
+                    var toolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
 
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data: ") else { continue }
                         let payload = String(line.dropFirst(6))
 
                         if payload == "[DONE]" {
-                            if !toolCallName.isEmpty {
-                                continuation.yield(.toolCall(ToolCall(
-                                    id: toolCallId,
-                                    name: toolCallName,
-                                    arguments: toolCallArgs
-                                )))
+                            for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
+                                if !tc.name.isEmpty {
+                                    continuation.yield(.toolCall(ToolCall(
+                                        id: tc.id,
+                                        name: tc.name,
+                                        arguments: tc.arguments
+                                    )))
+                                }
                             }
                             continuation.yield(.done)
                             continuation.finish()
@@ -390,13 +401,17 @@ actor OpenRouterService {
                             continuation.yield(.text(content))
                         }
 
-                        // Tool calls
-                        if let toolCalls = delta["tool_calls"] as? [[String: Any]],
-                           let tc = toolCalls.first {
-                            if let id = tc["id"] as? String { toolCallId = id }
-                            if let fn = tc["function"] as? [String: Any] {
-                                if let name = fn["name"] as? String { toolCallName = name }
-                                if let args = fn["arguments"] as? String { toolCallArgs += args }
+                        // Tool calls (supports multiple parallel tool calls)
+                        if let tcs = delta["tool_calls"] as? [[String: Any]] {
+                            for tc in tcs {
+                                let index = tc["index"] as? Int ?? 0
+                                var existing = toolCalls[index] ?? (id: "", name: "", arguments: "")
+                                if let id = tc["id"] as? String { existing.id = id }
+                                if let fn = tc["function"] as? [String: Any] {
+                                    if let name = fn["name"] as? String { existing.name = name }
+                                    if let args = fn["arguments"] as? String { existing.arguments += args }
+                                }
+                                toolCalls[index] = existing
                             }
                         }
                     }
