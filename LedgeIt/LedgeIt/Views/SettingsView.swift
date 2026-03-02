@@ -11,7 +11,14 @@ struct SettingsView: View {
     @State private var isConnecting: Bool = false
     @State private var isSyncing: Bool = false
     @State private var statusMessage: String?
+    @State private var creditInfo: OpenRouterService.CreditInfo?
+    @State private var creditError: Bool = false
+    @State private var isFetchingCredits: Bool = false
+    @State private var creditLastUpdated: Date?
     @AppStorage("appLanguage") private var appLanguage = "en"
+    @AppStorage("llmClassificationModel") private var classificationModel = ""
+    @AppStorage("llmExtractionModel") private var extractionModel = ""
+    @AppStorage("llmStatementModel") private var statementModel = ""
     private var l10n: L10n { L10n(appLanguage) }
 
     var onKeySaved: (() -> Void)?
@@ -87,6 +94,78 @@ struct SettingsView: View {
                                 }
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
+                            }
+                        }
+
+                        // OpenRouter Credit Usage card
+                        if isFetchingCredits {
+                            SettingsSection(title: "OpenRouter", icon: "dollarsign.circle.fill", color: .green) {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text(l10n.openRouterFetchingCredits)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else if let info = creditInfo {
+                            OpenRouterCreditCard(
+                                info: info,
+                                l10n: l10n,
+                                lastUpdated: creditLastUpdated,
+                                onRefresh: { fetchOpenRouterCredits() }
+                            )
+                        } else if creditError {
+                            SettingsSection(title: "OpenRouter", icon: "dollarsign.circle.fill", color: .green) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(.orange)
+                                    Text(l10n.openRouterCreditsError)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(l10n.openRouterRefresh) { fetchOpenRouterCredits() }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                }
+                            }
+                        }
+
+                        // LLM Model Settings
+                        SettingsSection(title: l10n.llmModels, icon: "cpu.fill", color: .indigo) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(l10n.llmModelsDesc)
+                                    .font(.caption).foregroundStyle(.secondary)
+
+                                ModelPicker(
+                                    label: l10n.classificationModelLabel,
+                                    description: l10n.classificationModelDesc,
+                                    selection: $classificationModel,
+                                    defaultModel: PFMConfig.defaultClassificationModel
+                                )
+
+                                ModelPicker(
+                                    label: l10n.extractionModelLabel,
+                                    description: l10n.extractionModelDesc,
+                                    selection: $extractionModel,
+                                    defaultModel: PFMConfig.defaultExtractionModel
+                                )
+
+                                ModelPicker(
+                                    label: l10n.statementModelLabel,
+                                    description: l10n.statementModelDesc,
+                                    selection: $statementModel,
+                                    defaultModel: PFMConfig.defaultStatementModel
+                                )
+
+                                HStack {
+                                    Spacer()
+                                    Button(l10n.resetToDefaults) {
+                                        classificationModel = ""
+                                        extractionModel = ""
+                                        statementModel = ""
+                                    }
+                                    .buttonStyle(.bordered).controlSize(.small)
+                                }
                             }
                         }
 
@@ -390,6 +469,24 @@ struct SettingsView: View {
         googleClientID = KeychainService.load(key: .googleClientID) ?? ""
         googleClientSecret = KeychainService.load(key: .googleClientSecret) ?? ""
         loadSyncState()
+        fetchOpenRouterCredits()
+    }
+
+    private func fetchOpenRouterCredits() {
+        guard let key = KeychainService.load(key: .openRouterAPIKey), !key.isEmpty else { return }
+        isFetchingCredits = true
+        creditError = false
+        Task {
+            do {
+                let service = try OpenRouterService()
+                let info = try await service.fetchCredits()
+                creditInfo = info
+                creditLastUpdated = Date()
+            } catch {
+                creditError = true
+            }
+            isFetchingCredits = false
+        }
     }
 
     private func loadSyncState() {
@@ -471,5 +568,158 @@ private struct SyncStatRow: View {
                 .monospacedDigit()
         }
         .font(.callout)
+    }
+}
+
+private struct OpenRouterCreditCard: View {
+    let info: OpenRouterService.CreditInfo
+    let l10n: L10n
+    let lastUpdated: Date?
+    let onRefresh: () -> Void
+
+    private var usagePercent: Double {
+        guard info.totalCredits > 0 else { return 0 }
+        return min(info.usage / info.totalCredits, 1.0)
+    }
+
+    private var barColor: Color {
+        if usagePercent > 0.9 { return .red }
+        if usagePercent > 0.7 { return .orange }
+        return .green
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm:ss a"
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header row: title + last updated + refresh
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("OpenRouter")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    if let date = lastUpdated {
+                        Text("\(l10n.openRouterLastUpdated): \(Self.timeFormatter.string(from: date))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer()
+                Button(l10n.openRouterRefresh) { onRefresh() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+
+            // Three stat cards in a row
+            HStack(spacing: 10) {
+                CreditStatCard(
+                    label: l10n.openRouterTotalCredits,
+                    value: formatUSD(info.totalCredits),
+                    color: .green
+                )
+                CreditStatCard(
+                    label: l10n.openRouterUsed,
+                    value: formatUSD(info.usage),
+                    color: .red
+                )
+                CreditStatCard(
+                    label: l10n.openRouterRemaining,
+                    value: formatUSD(info.remaining),
+                    color: .mint
+                )
+            }
+
+            // Credit Usage progress bar
+            VStack(alignment: .leading, spacing: 8) {
+                Text(l10n.openRouterCreditUsage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.secondary.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(barColor.gradient)
+                            .frame(width: max(0, geo.size.width * usagePercent))
+                    }
+                }
+                .frame(height: 10)
+
+                Text(l10n.openRouterUsedPercent(String(format: "%.1f%%", usagePercent * 100)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .padding(12)
+            .background(.background.tertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func formatUSD(_ value: Double) -> String {
+        String(format: "$%.2f", value)
+    }
+}
+
+private struct CreditStatCard: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(color)
+                .monospacedDigit()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.tertiary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Model Picker
+
+private struct ModelPicker: View {
+    let label: String
+    let description: String
+    @Binding var selection: String
+    let defaultModel: String
+
+    private var effectiveSelection: Binding<String> {
+        Binding(
+            get: { selection.isEmpty ? defaultModel : selection },
+            set: { selection = $0 == defaultModel ? "" : $0 }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.callout).fontWeight(.medium)
+            Text(description)
+                .font(.caption2).foregroundStyle(.tertiary)
+            Picker("", selection: effectiveSelection) {
+                ForEach(PFMConfig.availableModels, id: \.id) { model in
+                    Text(model.label).tag(model.id)
+                }
+            }
+            .labelsHidden()
+        }
     }
 }

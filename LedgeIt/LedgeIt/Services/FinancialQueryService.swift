@@ -11,7 +11,7 @@ actor FinancialQueryService {
     // MARK: - Transactions
 
     func getTransactions(filter: TransactionFilter) async throws -> [Transaction] {
-        try database.db.read { db in
+        try await database.db.read { db in
             var query = Transaction.filter(Transaction.Columns.deletedAt == nil)
 
             if let startDate = filter.startDate {
@@ -44,7 +44,7 @@ actor FinancialQueryService {
     }
 
     func getTransactionSummary(period: DatePeriod) async throws -> SpendingSummary {
-        try database.db.read { db in
+        try await database.db.read { db in
             let totalIncome = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(amount), 0) FROM transactions
                 WHERE deleted_at IS NULL
@@ -76,7 +76,7 @@ actor FinancialQueryService {
     }
 
     func getTopMerchants(period: DatePeriod, limit: Int = 10) async throws -> [MerchantSummary] {
-        try database.db.read { db in
+        try await database.db.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT merchant, SUM(ABS(amount)) as total, COUNT(*) as cnt
                 FROM transactions
@@ -100,7 +100,7 @@ actor FinancialQueryService {
     }
 
     func getCategoryBreakdown(period: DatePeriod) async throws -> [CategorySummary] {
-        try database.db.read { db in
+        try await database.db.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT category, SUM(ABS(amount)) as total, COUNT(*) as cnt
                 FROM transactions
@@ -130,7 +130,7 @@ actor FinancialQueryService {
     // MARK: - Credit Card Bills
 
     func getCreditCardBills(filter: BillFilter) async throws -> [CreditCardBill] {
-        try database.db.read { db in
+        try await database.db.read { db in
             var query = CreditCardBill.all()
 
             if let startDate = filter.startDate {
@@ -153,7 +153,7 @@ actor FinancialQueryService {
     }
 
     func getUpcomingPayments() async throws -> [CreditCardBill] {
-        try database.db.read { db in
+        try await database.db.read { db in
             let fmt = DateFormatter()
             fmt.dateFormat = "yyyy-MM-dd"
             let today = fmt.string(from: Date())
@@ -169,7 +169,7 @@ actor FinancialQueryService {
     // MARK: - Goals
 
     func getGoals(status: String? = nil) async throws -> [FinancialGoal] {
-        try database.db.read { db in
+        try await database.db.read { db in
             var query = FinancialGoal.all()
             if let status {
                 query = query.filter(FinancialGoal.Columns.status == status)
@@ -183,7 +183,7 @@ actor FinancialQueryService {
     // MARK: - Reports
 
     func getLatestReport() async throws -> FinancialReport? {
-        try database.db.read { db in
+        try await database.db.read { db in
             try FinancialReport
                 .order(FinancialReport.Columns.createdAt.desc)
                 .fetchOne(db)
@@ -191,7 +191,7 @@ actor FinancialQueryService {
     }
 
     func getReports(period: DatePeriod) async throws -> [FinancialReport] {
-        try database.db.read { db in
+        try await database.db.read { db in
             try FinancialReport
                 .filter(FinancialReport.Columns.createdAt >= period.startDate)
                 .filter(FinancialReport.Columns.createdAt <= period.endDate)
@@ -203,7 +203,7 @@ actor FinancialQueryService {
     // MARK: - Search
 
     func searchTransactions(query: String) async throws -> [Transaction] {
-        try database.db.read { db in
+        try await database.db.read { db in
             let escaped = query
                 .replacingOccurrences(of: "%", with: "\\%")
                 .replacingOccurrences(of: "_", with: "\\_")

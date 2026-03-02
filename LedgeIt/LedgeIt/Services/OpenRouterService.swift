@@ -211,8 +211,8 @@ actor OpenRouterService {
 
     // MARK: - Private
 
-    private let apiKey: String
-    private let session: URLSession
+    let apiKey: String
+    let session: URLSession
     private static let baseURL = "https://openrouter.ai/api/v1/chat/completions"
 
     // MARK: - Init
@@ -317,18 +317,19 @@ actor OpenRouterService {
             }
             return ["role": msg.role, "content": contentValue]
         }
-        return streamComplete(model: model, rawMessages: rawMessages, tools: tools, temperature: temperature, maxTokens: maxTokens)
+        return Self.performStreamComplete(model: model, rawMessages: rawMessages, tools: tools, temperature: temperature, maxTokens: maxTokens, apiKey: self.apiKey, session: self.session)
     }
 
-    func streamComplete(
+    nonisolated static func performStreamComplete(
         model: String,
         rawMessages: [[String: Any]],
         tools: [ToolDefinition] = [],
         temperature: Double = 0.3,
-        maxTokens: Int = 4000
+        maxTokens: Int = 4000,
+        apiKey: String,
+        session: URLSession
     ) -> AsyncStream<StreamEvent> {
-        // Build request entirely before the closure so only Sendable types are captured
-        guard let url = URL(string: Self.baseURL) else {
+        guard let url = URL(string: "https://openrouter.ai/api/v1/chat/completions") else {
             return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
         }
 
@@ -350,80 +351,79 @@ actor OpenRouterService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(self.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
         request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 120
         request.httpBody = httpBody
 
-        let session = self.session
-        return AsyncStream { continuation in
-            Task {
-                do {
-                    let (bytes, response) = try await session.bytes(for: request)
+        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
 
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          (200...299).contains(httpResponse.statusCode) else {
-                        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        continuation.yield(.error("HTTP \(code)"))
+        Task.detached {
+            do {
+                let (bytes, urlResponse) = try await session.bytes(for: request)
+
+                guard let httpResponse = urlResponse as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? 0
+                    continuation.yield(.error("HTTP \(code)"))
+                    continuation.finish()
+                    return
+                }
+
+                var toolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+                for try await line in bytes.lines {
+                    guard line.hasPrefix("data: ") else { continue }
+                    let payload = String(line.dropFirst(6))
+
+                    if payload == "[DONE]" {
+                        for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
+                            if !tc.name.isEmpty {
+                                continuation.yield(.toolCall(ToolCall(
+                                    id: tc.id,
+                                    name: tc.name,
+                                    arguments: tc.arguments
+                                )))
+                            }
+                        }
+                        continuation.yield(.done)
                         continuation.finish()
                         return
                     }
 
-                    var toolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
-
-                    for try await line in bytes.lines {
-                        guard line.hasPrefix("data: ") else { continue }
-                        let payload = String(line.dropFirst(6))
-
-                        if payload == "[DONE]" {
-                            for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
-                                if !tc.name.isEmpty {
-                                    continuation.yield(.toolCall(ToolCall(
-                                        id: tc.id,
-                                        name: tc.name,
-                                        arguments: tc.arguments
-                                    )))
-                                }
-                            }
-                            continuation.yield(.done)
-                            continuation.finish()
-                            return
-                        }
-
-                        guard let data = payload.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let choices = json["choices"] as? [[String: Any]],
-                              let delta = choices.first?["delta"] as? [String: Any] else {
-                            continue
-                        }
-
-                        // Text content
-                        if let content = delta["content"] as? String {
-                            continuation.yield(.text(content))
-                        }
-
-                        // Tool calls (supports multiple parallel tool calls)
-                        if let tcs = delta["tool_calls"] as? [[String: Any]] {
-                            for tc in tcs {
-                                let index = tc["index"] as? Int ?? 0
-                                var existing = toolCalls[index] ?? (id: "", name: "", arguments: "")
-                                if let id = tc["id"] as? String { existing.id = id }
-                                if let fn = tc["function"] as? [String: Any] {
-                                    if let name = fn["name"] as? String { existing.name = name }
-                                    if let args = fn["arguments"] as? String { existing.arguments += args }
-                                }
-                                toolCalls[index] = existing
-                            }
-                        }
+                    guard let data = payload.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let choices = json["choices"] as? [[String: Any]],
+                          let delta = choices.first?["delta"] as? [String: Any] else {
+                        continue
                     }
 
-                    continuation.finish()
-                } catch {
-                    continuation.yield(.error(error.localizedDescription))
-                    continuation.finish()
+                    if let content = delta["content"] as? String {
+                        continuation.yield(.text(content))
+                    }
+
+                    if let tcs = delta["tool_calls"] as? [[String: Any]] {
+                        for tc in tcs {
+                            let index = tc["index"] as? Int ?? 0
+                            var existing = toolCalls[index] ?? (id: "", name: "", arguments: "")
+                            if let id = tc["id"] as? String { existing.id = id }
+                            if let fn = tc["function"] as? [String: Any] {
+                                if let name = fn["name"] as? String { existing.name = name }
+                                if let args = fn["arguments"] as? String { existing.arguments += args }
+                            }
+                            toolCalls[index] = existing
+                        }
+                    }
                 }
+
+                continuation.finish()
+            } catch {
+                continuation.yield(.error(error.localizedDescription))
+                continuation.finish()
             }
         }
+
+        return stream
     }
 }

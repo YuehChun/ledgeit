@@ -72,7 +72,7 @@ struct ChatView: View {
                         .font(.title2)
                         .foregroundStyle(
                             inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
-                                ? .secondary : .accentColor
+                                ? .secondary : Color.accentColor
                         )
                 }
                 .buttonStyle(.plain)

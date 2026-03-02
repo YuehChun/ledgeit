@@ -71,10 +71,14 @@ actor ChatEngine {
                 var iterationText = ""
                 var toolCall: OpenRouterService.ToolCall?
 
-                let stream = await router.streamComplete(
+                let routerApiKey = await router.apiKey
+                let routerSession = await router.session
+                let stream = OpenRouterService.performStreamComplete(
                     model: model,
                     rawMessages: rawMessages,
-                    tools: toolDefinitions
+                    tools: toolDefinitions,
+                    apiKey: routerApiKey,
+                    session: routerSession
                 )
 
                 for await event in stream {

@@ -251,7 +251,36 @@ enum PFMConfig: Sendable {
 
     static let llmTemperature = 0.1
     static let llmMaxTokens = 2000
-    static let classificationModel = "anthropic/claude-haiku-4-5"
-    static let extractionModel = "anthropic/claude-sonnet-4-6"
+
+    static let defaultClassificationModel = "anthropic/claude-haiku-4-5"
+    static let defaultExtractionModel = "anthropic/claude-sonnet-4-6"
+    static let defaultStatementModel = "google/gemini-2.5-pro-preview"
+
+    static var classificationModel: String {
+        let saved = UserDefaults.standard.string(forKey: "llmClassificationModel") ?? ""
+        return saved.isEmpty ? defaultClassificationModel : saved
+    }
+
+    static var extractionModel: String {
+        let saved = UserDefaults.standard.string(forKey: "llmExtractionModel") ?? ""
+        return saved.isEmpty ? defaultExtractionModel : saved
+    }
+
+    static var statementModel: String {
+        let saved = UserDefaults.standard.string(forKey: "llmStatementModel") ?? ""
+        return saved.isEmpty ? defaultStatementModel : saved
+    }
+
     static let visionModel = "anthropic/claude-sonnet-4-6"
+
+    /// Available models for the picker UI
+    static let availableModels: [(id: String, label: String)] = [
+        ("anthropic/claude-haiku-4-5", "Claude Haiku 4.5 (Fast)"),
+        ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        ("anthropic/claude-opus-4-6", "Claude Opus 4.6"),
+        ("google/gemini-2.5-pro-preview", "Gemini 2.5 Pro"),
+        ("google/gemini-2.5-flash-preview", "Gemini 2.5 Flash"),
+        ("openai/gpt-4.1", "GPT-4.1"),
+        ("openai/gpt-4.1-mini", "GPT-4.1 Mini"),
+    ]
 }
