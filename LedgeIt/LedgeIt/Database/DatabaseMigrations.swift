@@ -195,5 +195,19 @@ struct DatabaseMigrations {
             }
             try db.create(index: "idx_transactions_deleted_at", on: "transactions", columns: ["deleted_at"])
         }
+
+        // MARK: - v9: Statement imports table
+        migrator.registerMigration("v9") { db in
+            try db.create(table: "statement_imports") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("filename", .text).notNull()
+                t.column("bank_name", .text)
+                t.column("statement_period", .text)
+                t.column("transaction_count", .integer).notNull().defaults(to: 0)
+                t.column("imported_at", .text)
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("error_message", .text)
+            }
+        }
     }
 }

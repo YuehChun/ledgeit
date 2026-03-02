@@ -120,23 +120,18 @@ struct AdvisorSettingsView: View {
                     Label(l10n.feedbackSection, systemImage: "wand.and.stars")
                         .font(.headline)
 
-                    TextEditor(text: $feedbackText)
+                    TextField(l10n.feedbackPlaceholder, text: $feedbackText, axis: .vertical)
                         .font(.callout)
-                        .frame(height: 80)
+                        .lineLimit(3...6)
+                        .textFieldStyle(.plain)
+                        .padding(10)
+                        .frame(minHeight: 80, alignment: .top)
+                        .background(.background.secondary)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(.quaternary, lineWidth: 1)
                         )
-                        .overlay(alignment: .topLeading) {
-                            if feedbackText.isEmpty {
-                                Text(l10n.feedbackPlaceholder)
-                                    .font(.callout).foregroundStyle(.tertiary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 8)
-                                    .allowsHitTesting(false)
-                            }
-                        }
 
                     if isOptimizing {
                         HStack(spacing: 8) {
@@ -153,63 +148,56 @@ struct AdvisorSettingsView: View {
                         .buttonStyle(.bordered)
                         .disabled(feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-
-                    if let preview = optimizedPreview {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label(l10n.optimizePreview, systemImage: "doc.text.magnifyingglass")
-                                .font(.subheadline).fontWeight(.semibold)
-                                .foregroundStyle(.blue)
-                            Text(preview.changesSummary)
-                                .font(.callout)
-                                .fixedSize(horizontal: false, vertical: true)
-                            HStack(spacing: 16) {
-                                Label("\(Int(preview.savingsTarget * 100))%", systemImage: "percent")
-                                    .font(.caption)
-                                Label(preview.riskLevel.capitalized, systemImage: "gauge.medium")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .background(.blue.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
                 }
                 .padding(16)
                 .background(.background.secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                // MARK: - Apply Button
-                if isApplying {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(l10n.applying)
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
+                // MARK: - Pending Diff Review
+                if let preview = optimizedPreview {
+                    PromptDiffReviewCard(
+                        l10n: l10n,
+                        currentPersona: currentPersona,
+                        proposed: preview,
+                        isApplying: isApplying,
+                        onApprove: { applyChanges() },
+                        onReject: {
+                            optimizedPreview = nil
+                            revertTarget = nil
+                        }
+                    )
                 } else {
-                    Button {
-                        applyChanges()
-                    } label: {
-                        Label(l10n.applyButton, systemImage: "checkmark.circle.fill")
-                            .frame(maxWidth: .infinity)
+                    // MARK: - Apply Button (for persona switch / revert only)
+                    if isApplying {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(l10n.applying)
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else if hasPendingChanges {
+                        Button {
+                            applyChanges()
+                        } label: {
+                            Label(l10n.applyButton, systemImage: "checkmark.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(!hasPendingChanges)
                 }
 
                 // MARK: - Version History
                 if !versions.isEmpty {
-                    DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(l10n.versionHistory, systemImage: "clock.arrow.circlepath")
+                            .font(.headline)
+
                         VStack(spacing: 8) {
                             ForEach(versions) { version in
                                 versionRow(version)
                             }
                         }
-                    } label: {
-                        Label(l10n.versionHistory, systemImage: "clock.arrow.circlepath")
-                            .font(.headline)
                     }
                     .padding(16)
                     .background(.background.secondary)
@@ -456,6 +444,7 @@ struct AdvisorSettingsView: View {
 
     // MARK: - Persona Card
 
+    @ViewBuilder
     private func personaCard(id: String, icon: String, color: Color, name: String, desc: String, target: String) -> some View {
         Button {
             personaId = id
@@ -491,5 +480,189 @@ struct AdvisorSettingsView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Prompt Diff Review Card
+
+private struct PromptDiffReviewCard: View {
+    let l10n: L10n
+    let currentPersona: AdvisorPersona
+    let proposed: PromptOptimizer.OptimizedPrompt
+    let isApplying: Bool
+    let onApprove: () -> Void
+    let onReject: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(l10n.pendingReview, systemImage: "eye.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+
+            // Changes summary
+            VStack(alignment: .leading, spacing: 6) {
+                Text(l10n.changesSummary)
+                    .font(.caption).foregroundStyle(.secondary).fontWeight(.medium)
+                Text(proposed.changesSummary)
+                    .font(.callout)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background.tertiary)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            // Parameter comparison
+            VStack(alignment: .leading, spacing: 8) {
+                Text(l10n.parameters)
+                    .font(.caption).foregroundStyle(.secondary).fontWeight(.medium)
+
+                HStack(spacing: 0) {
+                    Text("")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(l10n.currentLabel)
+                        .frame(width: 100, alignment: .trailing)
+                    Text("→")
+                        .frame(width: 30, alignment: .center)
+                    Text(l10n.proposedLabel)
+                        .frame(width: 100, alignment: .leading)
+                }
+                .font(.caption).foregroundStyle(.tertiary).fontWeight(.medium)
+
+                paramRow(
+                    l10n.savingsTargetLabel,
+                    old: "\(Int(currentPersona.savingsTarget * 100))%",
+                    new: "\(Int(proposed.savingsTarget * 100))%",
+                    changed: currentPersona.savingsTarget != proposed.savingsTarget
+                )
+                paramRow(
+                    l10n.riskLevel,
+                    old: currentPersona.riskLevel,
+                    new: proposed.riskLevel,
+                    changed: currentPersona.riskLevel != proposed.riskLevel
+                )
+            }
+            .padding(10)
+            .background(.background.tertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            // Prompt diff
+            VStack(alignment: .leading, spacing: 8) {
+                Text(l10n.promptDiff)
+                    .font(.caption).foregroundStyle(.secondary).fontWeight(.medium)
+
+                InlineDiffView(
+                    oldText: currentPersona.spendingPhilosophy,
+                    newText: proposed.spendingPhilosophy
+                )
+            }
+
+            // Approve / Reject
+            HStack {
+                Spacer()
+                Button(l10n.rejectPrompt) {
+                    onReject()
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onApprove()
+                } label: {
+                    if isApplying {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text(l10n.applying)
+                        }
+                    } else {
+                        Label(l10n.approvePrompt, systemImage: "checkmark.circle.fill")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(isApplying)
+            }
+        }
+        .padding(16)
+        .background(.orange.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.orange.opacity(0.3), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func paramRow(_ label: String, old: String, new: String, changed: Bool) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(old)
+                .frame(width: 100, alignment: .trailing)
+                .foregroundStyle(changed ? .red : .secondary)
+            Text("→")
+                .frame(width: 30, alignment: .center)
+                .foregroundStyle(.tertiary)
+            Text(new)
+                .frame(width: 100, alignment: .leading)
+                .foregroundStyle(changed ? .green : .secondary)
+        }
+        .font(.callout)
+        .fontWeight(changed ? .medium : .regular)
+    }
+}
+
+// MARK: - Inline Diff View
+
+private struct InlineDiffView: View {
+    let oldText: String
+    let newText: String
+
+    private var diffLines: [DiffLine] {
+        TextDiff.diff(old: oldText, new: newText)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(diffLines) { line in
+                HStack(spacing: 0) {
+                    Text(prefix(for: line.type))
+                        .frame(width: 20, alignment: .center)
+                        .foregroundStyle(color(for: line.type))
+                    Text(line.text.isEmpty ? " " : line.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.system(.caption, design: .monospaced))
+                .padding(.vertical, 2)
+                .padding(.horizontal, 6)
+                .background(background(for: line.type))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func prefix(for type: DiffLineType) -> String {
+        switch type {
+        case .unchanged: return " "
+        case .added: return "+"
+        case .removed: return "−"
+        }
+    }
+
+    private func color(for type: DiffLineType) -> Color {
+        switch type {
+        case .unchanged: return .secondary
+        case .added: return .green
+        case .removed: return .red
+        }
+    }
+
+    private func background(for type: DiffLineType) -> Color {
+        switch type {
+        case .unchanged: return .clear
+        case .added: return .green.opacity(0.1)
+        case .removed: return .red.opacity(0.1)
+        }
     }
 }

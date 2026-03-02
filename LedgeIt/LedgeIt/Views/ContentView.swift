@@ -3,10 +3,12 @@ import GRDB
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
+    case chat = "Chat"
     case transactions = "Transactions"
     case review = "Review"
     case emails = "Emails"
     case calendar = "Calendar"
+    case statements = "Statements"
     case analysis = "Analysis"
     case advisor = "Advisor"
     case goals = "Goals"
@@ -17,10 +19,12 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .dashboard: return "chart.pie.fill"
+        case .chat: return "bubble.left.and.bubble.right.fill"
         case .transactions: return "creditcard.fill"
         case .review: return "checkmark.circle.fill"
         case .emails: return "envelope.fill"
         case .calendar: return "calendar"
+        case .statements: return "doc.text.fill"
         case .analysis: return "chart.bar.doc.horizontal.fill"
         case .advisor: return "brain.head.profile.fill"
         case .goals: return "target"
@@ -45,6 +49,8 @@ struct ContentView: View {
                 Section(l10n.overview) {
                     sidebarRow(l10n.dashboard, icon: SidebarItem.dashboard.icon)
                         .tag(SidebarItem.dashboard)
+                    sidebarRow(l10n.chat, icon: SidebarItem.chat.icon)
+                        .tag(SidebarItem.chat)
                 }
                 Section(l10n.data) {
                     sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
@@ -55,6 +61,8 @@ struct ContentView: View {
                         .tag(SidebarItem.emails)
                     sidebarRow(l10n.calendar, icon: SidebarItem.calendar.icon)
                         .tag(SidebarItem.calendar)
+                    sidebarRow(l10n.statementsSidebar, icon: SidebarItem.statements.icon)
+                        .tag(SidebarItem.statements)
                 }
                 Section(l10n.analysisSection) {
                     sidebarRow(l10n.analysis, icon: SidebarItem.analysis.icon)
@@ -91,6 +99,8 @@ struct ContentView: View {
                     switch selectedItem {
                     case .dashboard:
                         DashboardView()
+                    case .chat:
+                        ChatView()
                     case .transactions:
                         TransactionListView()
                     case .review:
@@ -99,6 +109,8 @@ struct ContentView: View {
                         EmailListView()
                     case .calendar:
                         CalendarView()
+                    case .statements:
+                        StatementsView()
                     case .analysis:
                         AnalysisDashboardView()
                     case .advisor:

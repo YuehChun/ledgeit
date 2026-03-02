@@ -62,6 +62,42 @@ actor OpenRouterService {
                 ContentPart(type: "image_url", text: nil, imageUrl: .init(url: "data:\(mimeType);base64,\(imageBase64)"))
             ]))
         }
+
+        static func assistant(_ text: String) -> Message {
+            Message(role: "assistant", content: .text(text))
+        }
+    }
+
+    // MARK: - Tool Calling Types
+
+    struct ToolDefinition: @unchecked Sendable {
+        let name: String
+        let description: String
+        let parameters: [String: Any]
+
+        func toDict() -> [String: Any] {
+            [
+                "type": "function",
+                "function": [
+                    "name": name,
+                    "description": description,
+                    "parameters": parameters
+                ] as [String: Any]
+            ]
+        }
+    }
+
+    struct ToolCall: Sendable {
+        let id: String
+        let name: String
+        let arguments: String
+    }
+
+    enum StreamEvent: Sendable {
+        case text(String)
+        case toolCall(ToolCall)
+        case done
+        case error(String)
     }
 
     enum OpenRouterError: LocalizedError {
@@ -84,10 +120,99 @@ actor OpenRouterService {
         }
     }
 
+    // MARK: - Credits
+
+    struct CreditInfo: Sendable {
+        let totalCredits: Double
+        let usage: Double
+        let remaining: Double
+        let isFreeTier: Bool
+    }
+
+    func fetchCredits() async throws -> CreditInfo {
+        // Try /api/v1/credits first (returns account-level totals)
+        if let accountInfo = try? await fetchAccountCredits() {
+            return accountInfo
+        }
+        // Fall back to /api/v1/key (per-key limits)
+        return try await fetchKeyCredits()
+    }
+
+    private func fetchAccountCredits() async throws -> CreditInfo {
+        guard let url = URL(string: "https://openrouter.ai/api/v1/credits") else {
+            throw OpenRouterError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw OpenRouterError.requestFailed(0)
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataObj = json["data"] as? [String: Any] else {
+            throw OpenRouterError.invalidResponse
+        }
+
+        let total = dataObj["total_credits"] as? Double ?? 0
+        let used = dataObj["total_usage"] as? Double ?? 0
+
+        return CreditInfo(
+            totalCredits: total,
+            usage: used,
+            remaining: total - used,
+            isFreeTier: total == 0
+        )
+    }
+
+    private func fetchKeyCredits() async throws -> CreditInfo {
+        guard let url = URL(string: "https://openrouter.ai/api/v1/key") else {
+            throw OpenRouterError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw OpenRouterError.requestFailed(0)
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataObj = json["data"] as? [String: Any] else {
+            throw OpenRouterError.invalidResponse
+        }
+
+        let limit = dataObj["limit"] as? Double
+        let limitRemaining = dataObj["limit_remaining"] as? Double
+        let usage = dataObj["usage"] as? Double ?? 0
+        let isFreeTier = dataObj["is_free_tier"] as? Bool ?? true
+
+        let total = limit ?? (usage + (limitRemaining ?? 0))
+        let remaining = limitRemaining ?? (total - usage)
+
+        return CreditInfo(
+            totalCredits: total,
+            usage: usage,
+            remaining: remaining,
+            isFreeTier: isFreeTier
+        )
+    }
+
     // MARK: - Private
 
-    private let apiKey: String
-    private let session: URLSession
+    let apiKey: String
+    let session: URLSession
     private static let baseURL = "https://openrouter.ai/api/v1/chat/completions"
 
     // MARK: - Init
@@ -166,5 +291,145 @@ actor OpenRouterService {
         }
 
         return content
+    }
+
+    // MARK: - Streaming API
+
+    func streamComplete(
+        model: String,
+        messages: [Message],
+        tools: [ToolDefinition] = [],
+        temperature: Double = 0.3,
+        maxTokens: Int = 4000
+    ) -> AsyncStream<StreamEvent> {
+        let rawMessages = messages.map { msg -> [String: Any] in
+            let contentValue: Any
+            switch msg.content {
+            case .text(let str):
+                contentValue = str
+            case .parts(let parts):
+                contentValue = parts.map { part -> [String: Any] in
+                    var dict: [String: Any] = ["type": part.type]
+                    if let text = part.text { dict["text"] = text }
+                    if let imageUrl = part.imageUrl { dict["image_url"] = ["url": imageUrl.url] }
+                    return dict
+                }
+            }
+            return ["role": msg.role, "content": contentValue]
+        }
+        return Self.performStreamComplete(model: model, rawMessages: rawMessages, tools: tools, temperature: temperature, maxTokens: maxTokens, apiKey: self.apiKey, session: self.session)
+    }
+
+    nonisolated static func performStreamComplete(
+        model: String,
+        rawMessages: [[String: Any]],
+        tools: [ToolDefinition] = [],
+        temperature: Double = 0.3,
+        maxTokens: Int = 4000,
+        apiKey: String,
+        session: URLSession
+    ) -> AsyncStream<StreamEvent> {
+        guard let url = URL(string: "https://openrouter.ai/api/v1/chat/completions") else {
+            return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": rawMessages,
+            "temperature": temperature,
+            "max_tokens": maxTokens,
+            "stream": true
+        ]
+        if !tools.isEmpty {
+            body["tools"] = tools.map { $0.toDict() }
+        }
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            return AsyncStream { $0.yield(.error("Failed to serialize request")); $0.finish() }
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
+        request.timeoutInterval = 120
+        request.httpBody = httpBody
+
+        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
+
+        Task.detached {
+            do {
+                let (bytes, urlResponse) = try await session.bytes(for: request)
+
+                guard let httpResponse = urlResponse as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? 0
+                    // Read error body for debugging
+                    var errorBody = ""
+                    for try await line in bytes.lines {
+                        errorBody += line
+                        if errorBody.count > 2000 { break }
+                    }
+                    continuation.yield(.error("HTTP \(code): \(errorBody)"))
+                    continuation.finish()
+                    return
+                }
+
+                var toolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+                for try await line in bytes.lines {
+                    guard line.hasPrefix("data: ") else { continue }
+                    let payload = String(line.dropFirst(6))
+
+                    if payload == "[DONE]" {
+                        for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
+                            if !tc.name.isEmpty {
+                                continuation.yield(.toolCall(ToolCall(
+                                    id: tc.id,
+                                    name: tc.name,
+                                    arguments: tc.arguments
+                                )))
+                            }
+                        }
+                        continuation.yield(.done)
+                        continuation.finish()
+                        return
+                    }
+
+                    guard let data = payload.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let choices = json["choices"] as? [[String: Any]],
+                          let delta = choices.first?["delta"] as? [String: Any] else {
+                        continue
+                    }
+
+                    if let content = delta["content"] as? String {
+                        continuation.yield(.text(content))
+                    }
+
+                    if let tcs = delta["tool_calls"] as? [[String: Any]] {
+                        for tc in tcs {
+                            let index = tc["index"] as? Int ?? 0
+                            var existing = toolCalls[index] ?? (id: "", name: "", arguments: "")
+                            if let id = tc["id"] as? String { existing.id = id }
+                            if let fn = tc["function"] as? [String: Any] {
+                                if let name = fn["name"] as? String { existing.name = name }
+                                if let args = fn["arguments"] as? String { existing.arguments += args }
+                            }
+                            toolCalls[index] = existing
+                        }
+                    }
+                }
+
+                continuation.finish()
+            } catch {
+                continuation.yield(.error(error.localizedDescription))
+                continuation.finish()
+            }
+        }
+
+        return stream
     }
 }
