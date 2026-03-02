@@ -327,10 +327,13 @@ actor OpenRouterService {
         temperature: Double = 0.3,
         maxTokens: Int = 4000
     ) -> AsyncStream<StreamEvent> {
-        AsyncStream { continuation in
-            Task { [apiKey, session] in
+        let baseURL = Self.baseURL
+        let apiKey = self.apiKey
+        let session = self.session
+        return AsyncStream { continuation in
+            Task {
                 do {
-                    guard let url = URL(string: Self.baseURL) else {
+                    guard let url = URL(string: baseURL) else {
                         continuation.yield(.error("Invalid URL"))
                         continuation.finish()
                         return
