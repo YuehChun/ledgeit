@@ -85,7 +85,10 @@ struct AccountOverview: Sendable, Codable {
 }
 
 struct GoalProgress: Sendable, Codable {
-    let goal: FinancialGoal
+    let goalId: String
+    let title: String
+    let category: String?
+    let targetAmount: Double?
     let currentAmount: Double
     let percentComplete: Double
 }
