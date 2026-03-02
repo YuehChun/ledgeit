@@ -16,14 +16,18 @@ A native macOS app that automatically extracts financial transactions from your 
 10. **Transaction Verification** — Edit and flag AI-extracted transactions for accuracy
 11. **Calendar Sync** — Creates Google Calendar events for each transaction
 12. **Auto-Sync** — Background sync every 15 minutes when the app is running
-13. **Bilingual** — Full English and Traditional Chinese (繁體中文) support
+13. **AI Chat** — Natural language chat interface for querying financial data with streaming responses and tool calling
+14. **MCP Server** — Model Context Protocol (stdio) server exposing financial data to third-party AI agents (e.g., Claude Desktop)
+15. **Bilingual** — Full English and Traditional Chinese (繁體中文) support
 
 ## Screenshots
 
-The app has 8 main views accessible from the sidebar:
+The app has 10 main views accessible from the sidebar:
 
 - **Dashboard** — Monthly spending/income summary, category breakdown chart, top merchants, spending velocity alert, upcoming credit card bills
+- **Chat** — AI-powered natural language chat for querying financial data (streaming responses, tool calling)
 - **Transactions** — Searchable/filterable table of all extracted transactions with edit/verify capabilities
+- **Review** — Email-grouped transaction review with edit and approval workflow
 - **Emails** — Raw Gmail inbox with processing status
 - **Calendar** — Month view with transaction dots and bill due date markers
 - **Financial Analysis** — AI-generated spending reports with health scores, category insights, savings rate trends, and action items
@@ -66,7 +70,12 @@ credit_card_bills table ──► DashboardView (upcoming bills), CalendarView (
   ├──► CalendarService ──► Google Calendar (payment events)
   ├──► SpendingAnalyzer + ReportGenerator ──► AnalysisDashboardView
   ├──► FinancialAdvisor + GoalPlanner ──► GoalsView
-  └──► PromptOptimizer ──► AdvisorSettingsView (version-controlled prompts)
+  ├──► PromptOptimizer ──► AdvisorSettingsView (version-controlled prompts)
+  │
+  ▼
+FinancialQueryService (shared query layer)
+  ├──► ChatEngine + OpenRouter (streaming + tool calling) ──► ChatView
+  └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
 ```
 
 ### AI Advisor Flow
@@ -99,7 +108,9 @@ LedgeIt/
 │   │   ├── SyncState.swift
 │   │   ├── FinancialReport.swift     # AI analysis reports
 │   │   ├── FinancialGoal.swift       # Goal tracking
-│   │   └── PromptVersion.swift       # Prompt version control
+│   │   ├── PromptVersion.swift       # Prompt version control
+│   │   ├── ChatMessage.swift         # Chat message types + stream events
+│   │   └── QueryTypes.swift          # Shared query filters & summaries
 │   ├── PFM/                          # Personal Finance Management
 │   │   ├── ExtractionPipeline.swift  # Main processing orchestrator
 │   │   ├── IntentClassifier.swift    # Rule-based email filtering
@@ -119,10 +130,12 @@ LedgeIt/
 │   │   ├── GoogleAuthService.swift   # OAuth 2.0 flow
 │   │   ├── SyncService.swift         # Email sync orchestration
 │   │   ├── CalendarService.swift     # Google Calendar API
-│   │   ├── OpenRouterService.swift   # LLM API client
+│   │   ├── OpenRouterService.swift   # LLM API client (streaming + tool calling)
 │   │   ├── PersonalFinanceService.swift # Dashboard data queries
 │   │   ├── KeychainService.swift     # Secure credential storage
-│   │   └── PDFParserService.swift    # PDF text extraction
+│   │   ├── PDFParserService.swift    # PDF text extraction
+│   │   ├── ChatEngine.swift          # AI chat with tool-calling loop
+│   │   └── FinancialQueryService.swift # Shared query layer for chat & MCP
 │   ├── Views/
 │   │   ├── ContentView.swift         # Sidebar + auto-sync
 │   │   ├── DashboardView.swift       # Financial dashboard
@@ -131,11 +144,17 @@ LedgeIt/
 │   │   ├── EmailListView.swift       # Email inbox
 │   │   ├── CalendarView.swift        # Calendar with bill markers
 │   │   ├── SettingsView.swift        # Credentials & sync controls
+│   │   ├── Chat/
+│   │   │   ├── ChatView.swift               # AI chat interface
+│   │   │   └── MessageBubble.swift          # Chat message rendering
 │   │   ├── Analysis/
 │   │   │   ├── AnalysisDashboardView.swift  # AI spending analysis
 │   │   │   ├── AdvisorSettingsView.swift    # Persona + prompt management
 │   │   │   └── GoalsView.swift              # Goal tracking + progress
 │   │   └── Components/              # CategoryIcon, CategoryBadge, AmountText
+│   ├── MCP/
+│   │   ├── MCPServer.swift           # stdio JSON-RPC MCP server
+│   │   └── MCPToolHandler.swift      # MCP tool definitions & execution
 │   └── Utilities/
 │       ├── Localization.swift        # En + zh-Hant localization
 │       ├── DateFormatters.swift
@@ -241,6 +260,31 @@ Users can iteratively refine the advisor's behavior:
 3. The PromptOptimizer sends feedback + current prompt to LLM → returns refined prompt with change summary
 4. Preview changes → Apply → new version saved to DB → goals regenerated
 5. Version history allows reverting to any previous configuration
+
+## AI Chat
+
+The Chat view provides a natural language interface for querying financial data. It uses OpenRouter (Claude Sonnet 4.5) with streaming responses and tool calling.
+
+### Available Tools
+
+| Tool | Description |
+|------|------------|
+| `get_transactions` | Query transactions with filters (date range, category, merchant, amount, type) |
+| `get_spending_summary` | Income, expenses, and net savings for a date range |
+| `get_category_breakdown` | Spending breakdown by category with percentages |
+| `get_top_merchants` | Top merchants by spending amount |
+| `get_upcoming_payments` | Unpaid credit card bills |
+| `get_goals` | Financial goals filtered by status |
+| `search_transactions` | Full-text search across merchants, descriptions, and categories |
+| `get_account_overview` | High-level account snapshot |
+
+The system prompt includes a live financial snapshot so the LLM has context before tool use.
+
+## MCP Server
+
+LedgeIt includes a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server that exposes the same financial query tools to third-party AI agents (e.g., Claude Desktop, Cursor).
+
+The MCP server reads JSON-RPC requests from stdin and writes responses to stdout. It supports `initialize`, `tools/list`, and `tools/call` methods with the same 8 tools available in the chat interface.
 
 ## Database Migrations
 

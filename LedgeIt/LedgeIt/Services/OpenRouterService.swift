@@ -366,7 +366,13 @@ actor OpenRouterService {
                 guard let httpResponse = urlResponse as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode) else {
                     let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? 0
-                    continuation.yield(.error("HTTP \(code)"))
+                    // Read error body for debugging
+                    var errorBody = ""
+                    for try await line in bytes.lines {
+                        errorBody += line
+                        if errorBody.count > 2000 { break }
+                    }
+                    continuation.yield(.error("HTTP \(code): \(errorBody)"))
                     continuation.finish()
                     return
                 }

@@ -5,7 +5,7 @@ actor ChatEngine {
     private var openRouter: OpenRouterService?
     private var conversationHistory: [OpenRouterService.Message] = []
 
-    private let model = "anthropic/claude-sonnet-4-20250514"
+    private let model = "anthropic/claude-sonnet-4.5"
     private let maxToolIterations = 5
 
     init(queryService: FinancialQueryService = FinancialQueryService()) {
