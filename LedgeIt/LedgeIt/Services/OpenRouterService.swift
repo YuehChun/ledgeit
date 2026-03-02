@@ -327,40 +327,39 @@ actor OpenRouterService {
         temperature: Double = 0.3,
         maxTokens: Int = 4000
     ) -> AsyncStream<StreamEvent> {
-        let baseURL = Self.baseURL
-        let apiKey = self.apiKey
+        // Build request entirely before the closure so only Sendable types are captured
+        guard let url = URL(string: Self.baseURL) else {
+            return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": rawMessages,
+            "temperature": temperature,
+            "max_tokens": maxTokens,
+            "stream": true
+        ]
+        if !tools.isEmpty {
+            body["tools"] = tools.map { $0.toDict() }
+        }
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            return AsyncStream { $0.yield(.error("Failed to serialize request")); $0.finish() }
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(self.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
+        request.timeoutInterval = 120
+        request.httpBody = httpBody
+
         let session = self.session
         return AsyncStream { continuation in
             Task {
                 do {
-                    guard let url = URL(string: baseURL) else {
-                        continuation.yield(.error("Invalid URL"))
-                        continuation.finish()
-                        return
-                    }
-
-                    var request = URLRequest(url: url)
-                    request.httpMethod = "POST"
-                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-                    request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
-                    request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
-                    request.timeoutInterval = 120
-
-                    var body: [String: Any] = [
-                        "model": model,
-                        "messages": rawMessages,
-                        "temperature": temperature,
-                        "max_tokens": maxTokens,
-                        "stream": true
-                    ]
-
-                    if !tools.isEmpty {
-                        body["tools"] = tools.map { $0.toDict() }
-                    }
-
-                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse,
