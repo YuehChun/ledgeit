@@ -70,7 +70,7 @@ actor OpenRouterService {
 
     // MARK: - Tool Calling Types
 
-    struct ToolDefinition: Sendable {
+    struct ToolDefinition: @unchecked Sendable {
         let name: String
         let description: String
         let parameters: [String: Any]
