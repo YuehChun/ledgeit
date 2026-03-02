@@ -50,6 +50,18 @@ struct L10n: Sendable {
     var openRouterAI: String { s("OpenRouter (AI)", "OpenRouter (AI)") }
     var apiKey: String { s("API Key", "API 金鑰") }
     var openRouterHint: String { s("Get your API key from openrouter.ai", "從 openrouter.ai 取得 API 金鑰") }
+    var openRouterBudget: String { s("Budget", "預算") }
+    var openRouterUsed: String { s("Used", "已使用") }
+    var openRouterRemaining: String { s("Remaining", "剩餘") }
+    var openRouterFreeTier: String { s("Free Tier", "免費方案") }
+    var openRouterNoLimit: String { s("No limit set", "未設定上限") }
+    var openRouterFetchingCredits: String { s("Fetching credits...", "正在取得額度...") }
+    var openRouterCreditsError: String { s("Could not fetch credits", "無法取得額度資訊") }
+    var openRouterRefresh: String { s("Refresh", "重新整理") }
+    var openRouterCreditUsage: String { s("Credit Usage", "額度使用") }
+    func openRouterUsedPercent(_ pct: String) -> String { s("\(pct) used", "已使用 \(pct)") }
+    var openRouterTotalCredits: String { s("Total Credits", "總額度") }
+    var openRouterLastUpdated: String { s("Last updated", "最後更新") }
     var connectionStatus: String { s("Connection Status", "連線狀態") }
     var googleConnected: String { s("Google Connected", "Google 已連線") }
     var notConnected: String { s("Not Connected", "未連線") }
@@ -147,6 +159,24 @@ struct L10n: Sendable {
     var revert: String { s("Revert", "還原") }
     var activeVersion: String { s("Active", "使用中") }
 
+    // MARK: - Prompt Diff & Review
+
+    var promptVersions: String { s("Prompt Versions", "提示詞版本") }
+    var promptVersionsSubtitle: String { s("Review and manage AI advisor prompt changes", "審核與管理 AI 顧問提示詞變更") }
+    var pendingReview: String { s("Pending Review", "待審核") }
+    var changesSummary: String { s("Changes Summary", "變更摘要") }
+    var parameters: String { s("Parameters", "參數") }
+    var currentLabel: String { s("Current", "目前") }
+    var proposedLabel: String { s("Proposed", "建議") }
+    var promptDiff: String { s("Prompt Diff", "提示詞差異") }
+    var approvePrompt: String { s("Approve", "核准") }
+    var rejectPrompt: String { s("Reject", "拒絕") }
+    var noVersionsYet: String { s("No Versions Yet", "尚無版本") }
+    var noVersionsDescription: String { s("Optimize your advisor to create prompt versions.", "優化您的顧問以建立提示詞版本。") }
+    var noPendingChanges: String { s("No Pending Changes", "沒有待審核的變更") }
+    var noPendingDescription: String { s("Enter feedback and click Optimize to generate prompt improvements.", "輸入回饋並點擊優化以產生提示詞改進。") }
+    var versionLabel: String { s("Version", "版本") }
+
     // MARK: - Category Names
 
     func categoryName(_ raw: String) -> String {
@@ -216,6 +246,15 @@ struct L10n: Sendable {
         s("\(count) transaction\(count == 1 ? "" : "s")", "\(count) 筆交易")
     }
 
+    // MARK: - Chat
+
+    var chat: String { s("Chat", "聊天") }
+    var chatTitle: String { s("Financial Assistant", "財務助手") }
+    var chatPlaceholder: String { s("Ask about your finances...", "詢問您的財務狀況...") }
+    var chatEmptyTitle: String { s("Ask Me Anything", "隨時提問") }
+    var chatEmptyDescription: String { s("Ask about your spending, transactions, goals, or upcoming payments.", "詢問您的消費、交易、目標或即將到期的付款。") }
+    var clearChat: String { s("Clear conversation", "清除對話") }
+
     // MARK: - Dashboard
 
     var spendingOverview: String { s("Spending Overview", "消費概覽") }
@@ -252,4 +291,59 @@ struct L10n: Sendable {
     var paymentCalendar: String { s("Payment Calendar", "付款日曆") }
     var paymentCalendarDesc: String { s("Track upcoming bills and payments", "追蹤即將到來的帳單與付款") }
     var getStarted: String { s("Get Started", "開始使用") }
+
+    // MARK: - Statements
+    var statements: String { s("Statements", "帳單") }
+    var statementsSubtitle: String { s("Import credit card statements", "匯入信用卡帳單") }
+    var passwordVault: String { s("Password Vault", "密碼保管庫") }
+    var addPassword: String { s("Add Password", "新增密碼") }
+    var editPassword: String { s("Edit Password", "編輯密碼") }
+    var bankName: String { s("Bank Name", "銀行名稱") }
+    var cardLabel: String { s("Card Label", "卡片名稱") }
+    var pdfPassword: String { s("PDF Password", "PDF 密碼") }
+    var deletePassword: String { s("Delete", "刪除") }
+    var savePassword: String { s("Save", "儲存") }
+    var cancelAction: String { s("Cancel", "取消") }
+    var uploadStatement: String { s("Upload Statement", "上傳帳單") }
+    var dropPDFHere: String { s("Drop PDF here or click to browse", "拖放 PDF 檔案或點擊瀏覽") }
+    var processing: String { s("Processing...", "處理中...") }
+    var decrypting: String { s("Decrypting PDF...", "解密 PDF 中...") }
+    var extractingText: String { s("Extracting text...", "擷取文字中...") }
+    var analyzingTransactions: String { s("Analyzing transactions...", "分析交易中...") }
+    var extractedTransactions: String { s("Extracted Transactions", "擷取的交易") }
+    var importAll: String { s("Import All", "全部匯入") }
+    var noTransactionsFound: String { s("No transactions found", "未找到交易") }
+    var noTransactionsDesc: String { s("Could not extract transactions from this statement", "無法從此帳單中擷取交易") }
+    var importHistory: String { s("Import History", "匯入記錄") }
+    var noImportHistory: String { s("No imports yet", "尚無匯入記錄") }
+    var noImportHistoryDesc: String { s("Upload a credit card statement to get started", "上傳信用卡帳單以開始") }
+    var transactionCount: String { s("transactions", "筆交易") }
+    var importSuccess: String { s("Successfully imported", "匯入成功") }
+    var noPasswordsYet: String { s("No passwords saved", "尚無儲存的密碼") }
+    var noPasswordsDesc: String { s("Add your credit card statement passwords to enable auto-decrypt", "新增信用卡帳單密碼以啟用自動解密") }
+    var statementsSidebar: String { s("Statements", "帳單") }
+    var gmailPDFs: String { s("Gmail PDF Attachments", "Gmail PDF 附件") }
+    var noGmailPDFs: String { s("No PDF attachments found", "未找到 PDF 附件") }
+    var noGmailPDFsDesc: String { s("Sync your Gmail first to load email attachments", "請先同步 Gmail 以載入郵件附件") }
+    var parse: String { s("Parse", "解析") }
+    var imported: String { s("Imported", "已匯入") }
+    var paymentSummaryTitle: String { s("Payment Summary", "繳款資訊") }
+    var totalDue: String { s("Total Due", "應繳總額") }
+    var minimumDue: String { s("Minimum Due", "最低應繳") }
+    var paymentDueDate: String { s("Due Date", "繳款期限") }
+    var statementPeriod: String { s("Period", "帳單期間") }
+    var createCalendarReminder: String { s("Create Calendar Reminder", "建立日曆提醒") }
+    var creatingReminder: String { s("Creating...", "建立中...") }
+    var reminderCreated: String { s("Reminder Created", "已建立提醒") }
+
+    // MARK: - LLM Model Settings
+    var llmModels: String { s("LLM Models", "LLM 模型") }
+    var llmModelsDesc: String { s("Configure AI models for different tasks", "設定不同任務使用的 AI 模型") }
+    var classificationModelLabel: String { s("Classification", "分類") }
+    var classificationModelDesc: String { s("Email intent classification (fast, cheap)", "郵件意圖分類（快速、便宜）") }
+    var extractionModelLabel: String { s("Extraction", "擷取") }
+    var extractionModelDesc: String { s("Transaction extraction from emails", "從郵件擷取交易資料") }
+    var statementModelLabel: String { s("Statement Parsing", "帳單解析") }
+    var statementModelDesc: String { s("Credit card PDF parsing (needs strong reasoning)", "信用卡 PDF 解析（需要強推理能力）") }
+    var resetToDefaults: String { s("Reset to Defaults", "恢復預設") }
 }
