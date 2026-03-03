@@ -93,8 +93,7 @@ struct PDFExtractor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: PFMConfig.llmTemperature,
-            maxTokens: PFMConfig.llmMaxTokens
+            temperature: PFMConfig.llmTemperature
         )
 
         return try parseJSON(response)
@@ -140,8 +139,7 @@ struct PDFExtractor: Sendable {
                 .system("You are a financial document classifier. Return ONLY valid JSON."),
                 .user(classifyPrompt)
             ],
-            temperature: 0.0,
-            maxTokens: 300
+            temperature: 0.0
         )
 
         // Parse classification
@@ -223,8 +221,7 @@ struct PDFExtractor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: 0.05,
-            maxTokens: 4000
+            temperature: 0.05
         )
 
         return try parseJSON(response)
@@ -260,6 +257,10 @@ struct PDFExtractor: Sendable {
         cleaned = cleaned.replacingOccurrences(of: "```", with: "")
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Fix trailing commas
+        cleaned = cleaned.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+
         if let data = cleaned.data(using: .utf8) {
             do {
                 return try JSONDecoder().decode(PDFFinancialData.self, from: data)
@@ -268,13 +269,50 @@ struct PDFExtractor: Sendable {
             }
         }
 
+        // Extract JSON from first { to last }
         if let startRange = cleaned.range(of: "{"),
            let endRange = cleaned.range(of: "}", options: .backwards) {
-            var jsonStr = String(cleaned[startRange.lowerBound...endRange.upperBound])
-            jsonStr = jsonStr.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
-            jsonStr = jsonStr.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+            let jsonStr = String(cleaned[startRange.lowerBound...endRange.upperBound])
             if let data = jsonStr.data(using: .utf8) {
-                return try JSONDecoder().decode(PDFFinancialData.self, from: data)
+                do {
+                    return try JSONDecoder().decode(PDFFinancialData.self, from: data)
+                } catch {
+                    // Fall through to truncation recovery
+                }
+            }
+        }
+
+        // Recovery for truncated JSON: find last complete transaction object, close brackets
+        if let startIdx = cleaned.firstIndex(of: "{") {
+            var truncated = String(cleaned[startIdx...])
+            // Find the last complete "}" that could end a transaction object
+            // Try progressively shorter substrings ending at each "}"
+            let braceIndices = truncated.indices.filter { truncated[$0] == "}" }
+            for braceIdx in braceIndices.reversed() {
+                var attempt = String(truncated[...braceIdx])
+                // Count unclosed brackets
+                var openBraces = 0
+                var openBrackets = 0
+                for ch in attempt {
+                    switch ch {
+                    case "{": openBraces += 1
+                    case "}": openBraces -= 1
+                    case "[": openBrackets += 1
+                    case "]": openBrackets -= 1
+                    default: break
+                    }
+                }
+                // Close any remaining open brackets
+                attempt += String(repeating: "]", count: max(0, openBrackets))
+                attempt += String(repeating: "}", count: max(0, openBraces))
+                attempt = attempt.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
+                attempt = attempt.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+
+                if let data = attempt.data(using: .utf8),
+                   let result = try? JSONDecoder().decode(PDFFinancialData.self, from: data) {
+                    print("[PDFExtractor] Recovered truncated JSON (used \(attempt.count)/\(truncated.count) chars)")
+                    return result
+                }
             }
         }
 

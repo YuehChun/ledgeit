@@ -112,8 +112,7 @@ struct FinancialAdvisor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: 0.3,
-            maxTokens: 2000
+            temperature: 0.3
         )
 
         return try parseJSON(response)

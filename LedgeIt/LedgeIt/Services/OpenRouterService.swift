@@ -231,7 +231,7 @@ actor OpenRouterService {
         model: String,
         messages: [Message],
         temperature: Double = 0.1,
-        maxTokens: Int = 2000
+        maxTokens: Int? = nil
     ) async throws -> String {
         guard let url = URL(string: Self.baseURL) else {
             throw OpenRouterError.invalidResponse
@@ -245,7 +245,7 @@ actor OpenRouterService {
         request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 60
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": messages.map { msg -> [String: Any] in
                 let contentValue: Any
@@ -262,9 +262,11 @@ actor OpenRouterService {
                 }
                 return ["role": msg.role, "content": contentValue]
             },
-            "temperature": temperature,
-            "max_tokens": maxTokens
+            "temperature": temperature
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -300,7 +302,7 @@ actor OpenRouterService {
         messages: [Message],
         tools: [ToolDefinition] = [],
         temperature: Double = 0.3,
-        maxTokens: Int = 4000
+        maxTokens: Int? = nil
     ) -> AsyncStream<StreamEvent> {
         let rawMessages = messages.map { msg -> [String: Any] in
             let contentValue: Any
@@ -325,7 +327,7 @@ actor OpenRouterService {
         rawMessages: [[String: Any]],
         tools: [ToolDefinition] = [],
         temperature: Double = 0.3,
-        maxTokens: Int = 4000,
+        maxTokens: Int? = nil,
         apiKey: String,
         session: URLSession
     ) -> AsyncStream<StreamEvent> {
@@ -337,9 +339,11 @@ actor OpenRouterService {
             "model": model,
             "messages": rawMessages,
             "temperature": temperature,
-            "max_tokens": maxTokens,
             "stream": true
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
         if !tools.isEmpty {
             body["tools"] = tools.map { $0.toDict() }
         }

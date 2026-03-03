@@ -515,7 +515,7 @@ private struct GmailPDFSection: View {
                                 Button(l10n.parse) {
                                     onProcess(att)
                                 }
-                                .buttonStyle(.bordered).controlSize(.mini)
+                                .buttonStyle(.bordered).controlSize(.regular)
                                 .disabled(processingId != nil)
                             }
                         }

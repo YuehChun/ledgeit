@@ -263,8 +263,7 @@ struct DeduplicationService: Sendable {
         let response = try await router.complete(
             model: PFMConfig.classificationModel,
             messages: [.user(prompt)],
-            temperature: 0.0,
-            maxTokens: 200
+            temperature: 0.0
         )
 
         // Strip markdown code fences if present

@@ -313,13 +313,13 @@ struct SettingsView: View {
             statusMessage = "Saving credentials..."
             do {
                 if !openRouterKey.isEmpty {
-                    try KeychainService.save(key: .openRouterAPIKey, value: openRouterKey)
+                    try KeychainService.save(key: .openRouterAPIKey, value: openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 if !googleClientID.isEmpty {
-                    try KeychainService.save(key: .googleClientID, value: googleClientID)
+                    try KeychainService.save(key: .googleClientID, value: googleClientID.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 if !googleClientSecret.isEmpty {
-                    try KeychainService.save(key: .googleClientSecret, value: googleClientSecret)
+                    try KeychainService.save(key: .googleClientSecret, value: googleClientSecret.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 onKeySaved?()
             } catch {

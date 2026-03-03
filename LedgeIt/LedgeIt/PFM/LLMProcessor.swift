@@ -118,7 +118,6 @@ struct LLMProcessor: Sendable {
                 .user(userPrompt)
             ],
             temperature: PFMConfig.llmTemperature,
-            maxTokens: 500
         )
 
         return try parseJSON(response, as: ClassificationLLMResult.self)
@@ -195,8 +194,7 @@ struct LLMProcessor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: PFMConfig.llmTemperature,
-            maxTokens: PFMConfig.llmMaxTokens
+            temperature: PFMConfig.llmTemperature
         )
 
         return try parseJSON(response, as: ExtractionResult.self)
@@ -249,8 +247,7 @@ struct LLMProcessor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: PFMConfig.llmTemperature,
-            maxTokens: 300
+            temperature: PFMConfig.llmTemperature
         )
 
         return try parseJSON(response, as: BillExtractionResult.self)
@@ -326,8 +323,7 @@ struct LLMProcessor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: 0.3,
-            maxTokens: 1500
+            temperature: 0.3
         )
 
         return try parseJSON(response, as: SpendingAnalysis.self)
@@ -350,8 +346,7 @@ struct LLMProcessor: Sendable {
         return try await openRouter.complete(
             model: PFMConfig.visionModel,
             messages: [message],
-            temperature: PFMConfig.llmTemperature,
-            maxTokens: PFMConfig.llmMaxTokens
+            temperature: PFMConfig.llmTemperature
         )
     }
 
