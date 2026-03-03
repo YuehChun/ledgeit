@@ -11,6 +11,8 @@ struct CreditCardBill: Codable, FetchableRecord, PersistableRecord, Identifiable
     var statementPeriod: String?
     var isPaid: Bool = false
     var createdAt: String?
+    var reconciliationStatus: String?
+    var reconciledAmount: Double?
 
     static let databaseTableName = "credit_card_bills"
 
@@ -24,6 +26,8 @@ struct CreditCardBill: Codable, FetchableRecord, PersistableRecord, Identifiable
         static let statementPeriod = Column(CodingKeys.statementPeriod)
         static let isPaid = Column(CodingKeys.isPaid)
         static let createdAt = Column(CodingKeys.createdAt)
+        static let reconciliationStatus = Column(CodingKeys.reconciliationStatus)
+        static let reconciledAmount = Column(CodingKeys.reconciledAmount)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -36,6 +40,8 @@ struct CreditCardBill: Codable, FetchableRecord, PersistableRecord, Identifiable
         case statementPeriod = "statement_period"
         case isPaid = "is_paid"
         case createdAt = "created_at"
+        case reconciliationStatus = "reconciliation_status"
+        case reconciledAmount = "reconciled_amount"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

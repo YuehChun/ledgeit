@@ -219,5 +219,31 @@ struct DatabaseMigrations {
                 t.column("created_at", .text).notNull()
             }
         }
+
+        // MARK: - v11: Smart deduplication support
+        migrator.registerMigration("v11") { db in
+            // Dedup audit log
+            try db.create(table: "dedup_log") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kept_transaction_id", .integer).notNull()
+                t.column("removed_transaction_id", .integer).notNull()
+                t.column("match_score", .double).notNull()
+                t.column("match_method", .text).notNull()
+                t.column("match_details", .text)
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(index: "idx_dedup_log_removed", on: "dedup_log", columns: ["removed_transaction_id"])
+
+            // Link duplicate to its original
+            try db.alter(table: "transactions") { t in
+                t.add(column: "is_duplicate_of", .integer)
+            }
+
+            // Bill reconciliation tracking
+            try db.alter(table: "credit_card_bills") { t in
+                t.add(column: "reconciliation_status", .text)
+                t.add(column: "reconciled_amount", .double)
+            }
+        }
     }
 }
