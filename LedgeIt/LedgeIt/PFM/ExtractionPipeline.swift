@@ -12,6 +12,8 @@ final class ExtractionPipeline {
     let llmProcessor: LLMProcessor
     private let intentClassifier = IntentClassifier()
     private let pdfExtractor: PDFExtractor
+    private let deduplicationService: DeduplicationService
+    private let billReconciler: BillReconciler
 
     var isProcessing = false
     var processedCount = 0
@@ -23,6 +25,8 @@ final class ExtractionPipeline {
         self.database = database
         self.llmProcessor = llmProcessor
         self.pdfExtractor = PDFExtractor(llmProcessor: llmProcessor)
+        self.deduplicationService = DeduplicationService(database: database)
+        self.billReconciler = BillReconciler(database: database)
     }
 
     // MARK: - Process All Unprocessed Emails
@@ -48,8 +52,8 @@ final class ExtractionPipeline {
             do {
                 let (transactions, isFinancial) = try await processEmail(email)
 
-                // Dedup: filter out transactions that already exist in DB (same amount + currency + date)
-                let deduped = try await deduplicateTransactions(transactions)
+                // Smart dedup: fuzzy matching + LLM tiebreaker
+                let deduped = try await deduplicationService.deduplicate(transactions)
 
                 // Save transactions
                 try await database.db.write { [deduped] db in
@@ -241,6 +245,9 @@ final class ExtractionPipeline {
                     }
                 }
             }
+            // Trigger bill reconciliation
+            let reconciler = billReconciler
+            Task { try? await reconciler.reconcileAll() }
             return ([], true)  // Financial but no individual transactions
         }
 
@@ -321,30 +328,6 @@ final class ExtractionPipeline {
 
         let allTransactions = transactions + pdfTransactions
         return (allTransactions, !allTransactions.isEmpty)
-    }
-
-    // MARK: - Deduplication
-
-    /// Filter out transactions that already exist in the DB (same amount + currency + date)
-    private func deduplicateTransactions(_ transactions: [Transaction]) async throws -> [Transaction] {
-        var result: [Transaction] = []
-        for txn in transactions {
-            guard let date = txn.transactionDate else {
-                result.append(txn)
-                continue
-            }
-            let exists = try await database.db.read { db in
-                try Transaction
-                    .filter(Transaction.Columns.amount == txn.amount)
-                    .filter(Transaction.Columns.currency == txn.currency)
-                    .filter(Transaction.Columns.transactionDate == date)
-                    .fetchCount(db) > 0
-            }
-            if !exists {
-                result.append(txn)
-            }
-        }
-        return result
     }
 
     // MARK: - Calendar Sync
