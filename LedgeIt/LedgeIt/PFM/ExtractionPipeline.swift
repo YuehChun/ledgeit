@@ -247,7 +247,10 @@ final class ExtractionPipeline {
             }
             // Trigger bill reconciliation
             let reconciler = billReconciler
-            Task { try? await reconciler.reconcileAll() }
+            Task {
+                do { try await reconciler.reconcileAll() }
+                catch { print("[BillReconciler] Reconciliation failed: \(error)") }
+            }
             return ([], true)  // Financial but no individual transactions
         }
 
@@ -340,6 +343,7 @@ final class ExtractionPipeline {
                 WHERE t.id NOT IN (SELECT transaction_id FROM calendar_events WHERE transaction_id IS NOT NULL)
                 AND t.transaction_date IS NOT NULL
                 AND t.merchant IS NOT NULL
+                AND t.deleted_at IS NULL
                 ORDER BY t.transaction_date DESC
                 """)
         }

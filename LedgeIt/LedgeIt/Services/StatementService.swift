@@ -155,10 +155,10 @@ final class StatementService {
 
         // Save non-duplicate transactions
         try await database.db.write { db in
-            for var txn in deduped {
+            for txn in deduped {
                 try txn.insert(db)
             }
-            var record = StatementImport(
+            let record = StatementImport(
                 filename: filename,
                 bankName: bankName,
                 transactionCount: deduped.count,

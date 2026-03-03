@@ -30,17 +30,26 @@ struct DeduplicationService: Sendable {
         var result: [Transaction] = []
 
         for txn in transactions {
-            let duplicateOf = try await findDuplicate(for: txn)
-            if let originalId = duplicateOf {
-                // Insert the duplicate with soft-delete markers
+            let matchResult = try await findDuplicate(for: txn)
+            if let (originalId, score, method, details) = matchResult {
+                // Insert the duplicate with soft-delete markers and capture its ID
                 var duplicate = txn
                 duplicate.isDuplicateOf = originalId
                 duplicate.deletedAt = ISO8601DateFormatter().string(from: Date())
                 let duplicateToInsert = duplicate
-                try await database.db.write { db in
-                    var record = duplicateToInsert
-                    try record.insert(db)
+                let insertedId = try await database.db.write { db -> Int64 in
+                    var mutable = duplicateToInsert
+                    try mutable.insert(db)
+                    return mutable.id!
                 }
+                // Log with real inserted ID
+                try await logMatch(
+                    keptId: originalId,
+                    removedId: insertedId,
+                    score: score,
+                    method: method,
+                    details: details
+                )
             } else {
                 result.append(txn)
             }
@@ -51,7 +60,8 @@ struct DeduplicationService: Sendable {
 
     // MARK: - Find Duplicate
 
-    private func findDuplicate(for txn: Transaction) async throws -> Int64? {
+    /// Returns (originalId, score, method, details) if duplicate found, nil otherwise.
+    private func findDuplicate(for txn: Transaction) async throws -> (Int64, Double, String, String)? {
         guard let date = txn.transactionDate else { return nil }
 
         let candidates = try await findCandidates(
@@ -78,44 +88,24 @@ struct DeduplicationService: Sendable {
         guard let match = bestMatch else { return nil }
 
         if match.score >= Score.autoMatchThreshold {
-            try await logMatch(
-                keptId: match.transaction.id!,
-                removedTxn: txn,
-                score: match.score,
-                method: "rule_match",
-                details: scoreDetails(new: txn, existing: match.transaction)
-            )
-            return match.transaction.id
+            let details = scoreDetails(new: txn, existing: match.transaction)
+            return (match.transaction.id!, match.score, "rule_match", details)
         }
 
         // Score 50-80: LLM tiebreaker
         let llmResult = try await llmTiebreaker(new: txn, existing: match.transaction)
         if llmResult.isDuplicate {
-            try await logMatch(
-                keptId: match.transaction.id!,
-                removedTxn: txn,
-                score: match.score,
-                method: "llm_match",
-                details: llmResult.reason
-            )
-            return match.transaction.id
-        } else {
-            try await logMatch(
-                keptId: match.transaction.id!,
-                removedTxn: txn,
-                score: match.score,
-                method: "llm_reject",
-                details: llmResult.reason
-            )
-            return nil
+            return (match.transaction.id!, match.score, "llm_match", llmResult.reason)
         }
+        return nil
     }
 
     // MARK: - Candidate Search
 
     private func findCandidates(amount: Double, currency: String, date: String) async throws -> [Transaction] {
-        let minAmount = amount * 0.95
-        let maxAmount = amount * 1.05
+        let absAmount = abs(amount)
+        let minAmount = absAmount * 0.95
+        let maxAmount = absAmount * 1.05
 
         guard let dateObj = parseDate(date) else { return [] }
         let calendar = Calendar.current
@@ -128,14 +118,13 @@ struct DeduplicationService: Sendable {
         let endStr = fmt.string(from: endDate)
 
         return try await database.db.read { db in
-            try Transaction
-                .filter(Transaction.Columns.currency == currency)
-                .filter(Transaction.Columns.amount >= minAmount)
-                .filter(Transaction.Columns.amount <= maxAmount)
-                .filter(Transaction.Columns.transactionDate >= startStr)
-                .filter(Transaction.Columns.transactionDate <= endStr)
-                .filter(Transaction.Columns.deletedAt == nil)
-                .fetchAll(db)
+            try Transaction.fetchAll(db, sql: """
+                SELECT * FROM transactions
+                WHERE currency = ?
+                AND ABS(amount) >= ? AND ABS(amount) <= ?
+                AND transaction_date >= ? AND transaction_date <= ?
+                AND deleted_at IS NULL
+                """, arguments: [currency, minAmount, maxAmount, startStr, endStr])
         }
     }
 
@@ -144,7 +133,7 @@ struct DeduplicationService: Sendable {
     func computeScore(new: Transaction, existing: Transaction) -> Double {
         var score: Double = 0
 
-        if new.amount == existing.amount {
+        if abs(new.amount) == abs(existing.amount) {
             score += Score.exactAmount
         }
 
@@ -278,7 +267,19 @@ struct DeduplicationService: Sendable {
             maxTokens: 200
         )
 
-        guard let data = response.data(using: .utf8),
+        // Strip markdown code fences if present
+        var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("```") {
+            if let firstNewline = cleaned.firstIndex(of: "\n") {
+                cleaned = String(cleaned[cleaned.index(after: firstNewline)...])
+            }
+            if cleaned.hasSuffix("```") {
+                cleaned = String(cleaned.dropLast(3))
+            }
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        guard let data = cleaned.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let isDuplicate = json["is_duplicate"] as? Bool else {
             return LLMResult(isDuplicate: false, confidence: 0, reason: "Failed to parse LLM response: \(response)")
@@ -291,8 +292,7 @@ struct DeduplicationService: Sendable {
 
     // MARK: - Logging
 
-    private func logMatch(keptId: Int64, removedTxn: Transaction, score: Double, method: String, details: String) async throws {
-        let removedId = removedTxn.id ?? 0
+    private func logMatch(keptId: Int64, removedId: Int64, score: Double, method: String, details: String) async throws {
         let log = DedupLog(
             keptTransactionId: keptId,
             removedTransactionId: removedId,
@@ -301,9 +301,9 @@ struct DeduplicationService: Sendable {
             matchDetails: details,
             createdAt: ISO8601DateFormatter().string(from: Date())
         )
-        try await database.db.write { db in
-            var mutableLog = log
-            try mutableLog.insert(db)
+        try await database.db.write { [log] db in
+            var record = log
+            try record.insert(db)
         }
     }
 

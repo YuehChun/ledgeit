@@ -65,17 +65,20 @@ struct SpendingAnalyzer: Sendable {
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
                 AND (type = 'debit' OR type IS NULL)
+                AND deleted_at IS NULL
                 """, arguments: [startDate, endDate]) ?? 0
 
             let totalIncome = try Double.fetchOne(db, sql: """
                 SELECT COALESCE(SUM(amount), 0) FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
                 AND type = 'credit'
+                AND deleted_at IS NULL
                 """, arguments: [startDate, endDate]) ?? 0
 
             let transactionCount = try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
+                AND deleted_at IS NULL
                 """, arguments: [startDate, endDate]) ?? 0
 
             let savingsRate = totalIncome > 0 ? (totalIncome - totalSpending) / totalIncome : 0
@@ -88,6 +91,7 @@ struct SpendingAnalyzer: Sendable {
                 FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
                 AND category IS NOT NULL AND (type = 'debit' OR type IS NULL)
+                AND deleted_at IS NULL
                 GROUP BY category ORDER BY total DESC
                 """, arguments: [startDate, endDate])
 
@@ -96,6 +100,7 @@ struct SpendingAnalyzer: Sendable {
                 FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
                 AND category IS NOT NULL AND (type = 'debit' OR type IS NULL)
+                AND deleted_at IS NULL
                 GROUP BY category
                 """, arguments: [prevStart, prevEnd])
 
@@ -126,6 +131,7 @@ struct SpendingAnalyzer: Sendable {
                 FROM transactions
                 WHERE transaction_date >= ? AND transaction_date < ?
                 AND merchant IS NOT NULL AND (type = 'debit' OR type IS NULL)
+                AND deleted_at IS NULL
                 GROUP BY merchant ORDER BY total DESC LIMIT 10
                 """, arguments: [startDate, endDate])
 
@@ -205,10 +211,11 @@ struct SpendingAnalyzer: Sendable {
             SELECT t.merchant, t.amount, t.currency, t.transaction_date,
                    AVG(h.amount) as avg_amount, COUNT(h.id) as hist_count
             FROM transactions t
-            JOIN transactions h ON h.merchant = t.merchant AND h.id != t.id
+            JOIN transactions h ON h.merchant = t.merchant AND h.id != t.id AND h.deleted_at IS NULL
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             AND t.merchant IS NOT NULL
             AND (t.type = 'debit' OR t.type IS NULL)
+            AND t.deleted_at IS NULL
             GROUP BY t.id
             HAVING hist_count >= 2 AND ABS(t.amount) > ABS(avg_amount) * 2
             ORDER BY ABS(t.amount) DESC
