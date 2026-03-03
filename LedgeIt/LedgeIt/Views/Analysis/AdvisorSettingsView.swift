@@ -17,6 +17,7 @@ struct AdvisorSettingsView: View {
     @State private var versions: [PromptVersion] = []
     @State private var revertTarget: PromptVersion?
     @State private var initialPersonaId = ""
+    @ObservedObject private var goalService = GoalGenerationService.shared
 
     private var currentPersona: AdvisorPersona {
         AdvisorPersona.resolve(id: personaId, customSavingsTarget: customSavingsTarget, customRiskLevel: customRiskLevel)
@@ -113,8 +114,6 @@ struct AdvisorSettingsView: View {
                 .background(.background.secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                Divider()
-
                 // MARK: - Feedback & Optimize
                 VStack(alignment: .leading, spacing: 12) {
                     Label(l10n.feedbackSection, systemImage: "wand.and.stars")
@@ -203,6 +202,43 @@ struct AdvisorSettingsView: View {
                     .background(.background.secondary)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+
+                Divider()
+
+                // MARK: - Generate Goals (single action)
+                VStack(alignment: .leading, spacing: 12) {
+                    Label(l10n.generateGoals, systemImage: "target")
+                        .font(.headline)
+                    Text(l10n.generateGoalsDesc)
+                        .font(.callout).foregroundStyle(.secondary)
+
+                    if goalService.isGenerating {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(l10n.generatingGoals)
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                    } else {
+                        Button {
+                            goalService.generateGoals(
+                                personaId: personaId,
+                                customSavingsTarget: customSavingsTarget,
+                                customRiskLevel: customRiskLevel,
+                                language: appLanguage
+                            )
+                        } label: {
+                            Label(l10n.generateGoals, systemImage: "sparkles")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                }
+                .padding(16)
+                .background(.background.secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .padding(20)
         }
@@ -289,7 +325,6 @@ struct AdvisorSettingsView: View {
 
     private func applyChanges() {
         isApplying = true
-        let language = appLanguage
         let currentId = personaId
         let customTarget = customSavingsTarget
         let customRisk = customRiskLevel
@@ -304,7 +339,6 @@ struct AdvisorSettingsView: View {
                 loadVersions()
             }
             do {
-                // 1. Determine what to apply
                 if let preview = optimizedPreview {
                     // Feedback-optimized: create new version
                     let persona = AdvisorPersona(
@@ -319,12 +353,12 @@ struct AdvisorSettingsView: View {
                     // Revert: activate selected version
                     try await activateVersion(revert)
                 } else {
-                    // Preset switch: deactivate any active version
-                    try await deactivateAllVersions()
+                    // Preset switch: save as new version
+                    let persona = AdvisorPersona.resolve(
+                        id: currentId, customSavingsTarget: customTarget, customRiskLevel: customRisk
+                    )
+                    try await saveVersion(PromptVersion.fromPersona(persona, feedback: nil))
                 }
-
-                // 2. Regenerate goals
-                try await regenerateGoals(language: language, personaId: currentId, customTarget: customTarget, customRisk: customRisk)
             } catch {
                 print("Apply failed: \(error)")
             }
@@ -356,53 +390,6 @@ struct AdvisorSettingsView: View {
                 .filter(PromptVersion.Columns.id == versionId)
                 .updateAll(db, PromptVersion.Columns.isActive.set(to: true))
         }
-    }
-
-    private func deactivateAllVersions() async throws {
-        _ = try await AppDatabase.shared.db.write { db in
-            try PromptVersion
-                .filter(Column("is_active") == 1)
-                .updateAll(db, PromptVersion.Columns.isActive.set(to: false))
-        }
-    }
-
-    private func regenerateGoals(language: String, personaId: String, customTarget: Double, customRisk: String) async throws {
-        let persona = AdvisorPersona.resolveWithVersions(
-            id: personaId, customSavingsTarget: customTarget, customRiskLevel: customRisk
-        )
-
-        // Load latest report
-        let saved = try await AppDatabase.shared.db.read { db in
-            try FinancialReport
-                .order(FinancialReport.Columns.createdAt.desc)
-                .fetchOne(db)
-        }
-        guard let saved,
-              let adviceData = saved.adviceJSON.data(using: .utf8) else { return }
-
-        let advice = try JSONDecoder().decode(FinancialAdvisor.SpendingAdvice.self, from: adviceData)
-        let components = saved.periodStart.split(separator: "-")
-        guard components.count >= 2,
-              let year = Int(components[0]),
-              let month = Int(components[1]) else { return }
-
-        let analyzer = SpendingAnalyzer(database: AppDatabase.shared)
-        let monthlyReport = try analyzer.monthlyBreakdown(year: year, month: month)
-
-        // Delete old suggested goals
-        _ = try await AppDatabase.shared.db.write { db in
-            try FinancialGoal
-                .filter(FinancialGoal.Columns.status == "suggested")
-                .deleteAll(db)
-        }
-
-        // Generate new goals
-        let openRouter = try OpenRouterService()
-        let planner = GoalPlanner(openRouter: openRouter, database: AppDatabase.shared)
-        let newGoals = try await planner.suggestGoals(
-            report: monthlyReport, advice: advice, language: language, persona: persona
-        )
-        try await planner.saveGoals(newGoals)
     }
 
     // MARK: - Budget Persistence

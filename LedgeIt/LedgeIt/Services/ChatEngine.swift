@@ -33,6 +33,14 @@ actor ChatEngine {
         conversationHistory.removeAll()
     }
 
+    func restoreMessage(role: String, content: String) {
+        if role == "user" {
+            conversationHistory.append(.user(content))
+        } else {
+            conversationHistory.append(.assistant(content))
+        }
+    }
+
     // MARK: - Message Processing
 
     private func processMessage(
@@ -184,9 +192,17 @@ actor ChatEngine {
             - Active goals: \(overview.activeGoals)
             - Top spending categories: \(categoryList.isEmpty ? "None" : categoryList)
 
-            Use the available tools to query detailed data when needed. Be concise and helpful.
-            Format currency amounts with 2 decimal places.
-            Respond in the same language the user uses.
+            ## Interaction Guidelines
+            1. **Understand intent first**: When the user asks a question, briefly confirm your understanding of what they want before diving into data. For example: "Let me look up your dining spending this month..." or "I'll check your upcoming payments..."
+            2. **Rephrase when ambiguous**: If the user's request is vague or could mean multiple things, rephrase their intent and ask for confirmation before querying data. For example: "It sounds like you want to compare this month's spending to last month — is that right?"
+            3. **Summarize findings**: After retrieving data, provide a clear summary with key insights, not just raw numbers.
+            4. **Proactive suggestions**: When you notice patterns (overspending, upcoming bills, goal progress), mention them.
+
+            ## Formatting
+            - Use the available tools to query detailed data when needed.
+            - Be concise and helpful.
+            - Format currency amounts with 2 decimal places.
+            - Respond in the same language the user uses.
             """
     }
 

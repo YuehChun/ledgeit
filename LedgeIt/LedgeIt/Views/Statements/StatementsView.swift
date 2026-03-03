@@ -140,16 +140,41 @@ struct StatementsView: View {
         let sender = (att.emailSender ?? "").lowercased()
         let combined = "\(filename) \(subject) \(sender)"
 
-        let keywords = [
+        // Reject non-financial PDFs first
+        let rejectKeywords = [
+            // Career / recruitment
+            "career", "recruit", "hiring", "job", "interview", "resume", "cv",
+            "vacancy", "position", "talent", "onboarding", "orientation",
+            "apac career", "linkedin", "glassdoor", "indeed",
+            // Education / courses
+            "course", "syllabus", "lecture", "tutorial", "training material",
+            "certificate of completion",
+            // Marketing / events
+            "newsletter", "webinar", "conference", "invitation", "rsvp",
+            "brochure", "catalog", "flyer", "promo",
+            // Legal / contracts (non-financial)
+            "nda", "terms of service", "privacy policy",
+            // Technical / manuals
+            "user guide", "manual", "datasheet", "whitepaper", "spec sheet",
+        ]
+
+        for keyword in rejectKeywords {
+            if combined.contains(keyword) { return false }
+        }
+
+        let financialKeywords = [
             // English
             "statement", "estatement", "e-statement", "credit card",
+            "invoice", "receipt", "billing", "payment", "transaction",
+            "account summary", "balance", "instalment", "installment",
             // Chinese
             "帳單", "對帳單", "消費明細", "信用卡", "銀行", "存摺", "繳款",
+            "交易明細", "月結單", "帳戶", "繳費", "收據", "發票",
             // Bank-specific filename prefixes
             "dailystmt", "ebma", "ubot", "esun", "cbgcc",
         ]
 
-        for keyword in keywords {
+        for keyword in financialKeywords {
             if combined.contains(keyword) { return true }
         }
 

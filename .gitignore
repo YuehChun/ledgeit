@@ -1,11 +1,5 @@
-# Old AI codebase
-old-ai/
-
 # Claude Code
 .claude/
-
-# Docs (design docs, plans)
-docs/
 
 # Environment variables
 .env

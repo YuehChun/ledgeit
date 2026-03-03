@@ -209,5 +209,15 @@ struct DatabaseMigrations {
                 t.column("error_message", .text)
             }
         }
+
+        // MARK: - v10: Chat sessions
+        migrator.registerMigration("v10") { db in
+            try db.create(table: "chat_messages") { t in
+                t.primaryKey("id", .text)
+                t.column("role", .text).notNull()
+                t.column("content", .text).notNull()
+                t.column("created_at", .text).notNull()
+            }
+        }
     }
 }
