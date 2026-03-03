@@ -4,9 +4,13 @@ import PDFKit
 @MainActor
 final class StatementService {
     let database: AppDatabase
+    private let deduplicationService: DeduplicationService
+    private let billReconciler: BillReconciler
 
     init(database: AppDatabase = .shared) {
         self.database = database
+        self.deduplicationService = DeduplicationService(database: database)
+        self.billReconciler = BillReconciler(database: database)
     }
 
     struct ExtractionResult: Sendable {
@@ -128,32 +132,44 @@ final class StatementService {
 
     func saveTransactions(_ extracted: [ExtractedTransaction], filename: String, bankName: String?) async throws {
         let now = ISO8601DateFormatter().string(from: Date())
+
+        // Build Transaction objects
+        let transactions: [Transaction] = extracted.map { tx in
+            Transaction(
+                amount: tx.amount,
+                currency: tx.currency,
+                merchant: tx.merchant,
+                category: tx.category,
+                subcategory: tx.subcategory,
+                transactionDate: tx.transactionDate,
+                description: tx.description,
+                type: tx.type,
+                transferType: tx.transferType,
+                transferMetadata: tx.transferMetadata,
+                createdAt: now
+            )
+        }
+
+        // Smart dedup against existing transactions
+        let deduped = try await deduplicationService.deduplicate(transactions)
+
+        // Save non-duplicate transactions
         try await database.db.write { db in
-            for tx in extracted {
-                var transaction = Transaction(
-                    amount: tx.amount,
-                    currency: tx.currency,
-                    merchant: tx.merchant,
-                    category: tx.category,
-                    subcategory: tx.subcategory,
-                    transactionDate: tx.transactionDate,
-                    description: tx.description,
-                    type: tx.type,
-                    transferType: tx.transferType,
-                    transferMetadata: tx.transferMetadata,
-                    createdAt: now
-                )
-                try transaction.insert(db)
+            for var txn in deduped {
+                try txn.insert(db)
             }
             var record = StatementImport(
                 filename: filename,
                 bankName: bankName,
-                transactionCount: extracted.count,
+                transactionCount: deduped.count,
                 importedAt: now,
                 status: "done"
             )
             try record.insert(db)
         }
+
+        // Reconcile any bills that overlap with this statement's period
+        try await billReconciler.reconcileAll()
     }
 
     // MARK: - Errors
