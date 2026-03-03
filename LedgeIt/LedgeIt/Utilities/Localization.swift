@@ -107,8 +107,10 @@ struct L10n: Sendable {
     var completed: String { s("Completed", "已完成") }
     var all: String { s("All", "全部") }
     var noGoalsYet: String { s("No Goals Yet", "尚無目標") }
-    var noGoalsDescription: String { s("Generate a Financial Analysis first to get AI-suggested goals.", "請先產生財務分析以獲得 AI 建議的目標。") }
+    var noGoalsDescription: String { s("Goals are generated from the AI Advisor page. Go there to configure your advisor and generate goals.", "目標由 AI 顧問頁面產生。請前往該頁面設定顧問並產生目標。") }
     var noFilteredGoals: String { s("Try switching to a different filter to see your goals.", "請嘗試切換不同的篩選條件以查看目標。") }
+    var goToAdvisor: String { s("Go to AI Advisor", "前往 AI 顧問") }
+    var goalsFromAdvisor: String { s("Goals are generated from the AI Advisor page.", "目標由 AI 顧問頁面產生。") }
     var shortTermGoals: String { s("Short-Term Goals (1-3 months)", "短期目標（1-3 個月）") }
     var longTermGoals: String { s("Long-Term Goals (1-3 years)", "長期目標（1-3 年）") }
     var accept: String { s("Accept", "接受") }
@@ -152,7 +154,10 @@ struct L10n: Sendable {
     var optimizeButton: String { s("Optimize", "優化") }
     var optimizing: String { s("Optimizing prompt...", "正在優化提示詞...") }
     var optimizePreview: String { s("Proposed Changes", "建議的變更") }
-    var applyButton: String { s("Apply & Regenerate", "套用並重新產生") }
+    var applyButton: String { s("Apply", "套用") }
+    var generateGoals: String { s("Generate Goals", "產生目標") }
+    var generatingGoals: String { s("Generating goals...", "正在產生目標...") }
+    var generateGoalsDesc: String { s("Generate AI-suggested financial goals based on your current advisor persona and latest analysis.", "根據目前的顧問角色和最新分析產生 AI 建議的財務目標。") }
     var applying: String { s("Applying changes...", "正在套用變更...") }
     var versionHistory: String { s("Version History", "版本歷史") }
     var initialPreset: String { s("Initial preset", "初始預設") }
@@ -248,12 +253,14 @@ struct L10n: Sendable {
 
     // MARK: - Chat
 
-    var chat: String { s("Chat", "聊天") }
-    var chatTitle: String { s("Financial Assistant", "財務助手") }
+    var chat: String { s("Advisory", "諮詢助手") }
+    var chatTitle: String { s("Financial Advisory", "諮詢助手") }
     var chatPlaceholder: String { s("Ask about your finances...", "詢問您的財務狀況...") }
     var chatEmptyTitle: String { s("Ask Me Anything", "隨時提問") }
     var chatEmptyDescription: String { s("Ask about your spending, transactions, goals, or upcoming payments.", "詢問您的消費、交易、目標或即將到期的付款。") }
     var clearChat: String { s("Clear conversation", "清除對話") }
+    var newSession: String { s("New Session", "新對話") }
+    var newSessionHelp: String { s("Start a new conversation", "開始新的對話") }
 
     // MARK: - Dashboard
 

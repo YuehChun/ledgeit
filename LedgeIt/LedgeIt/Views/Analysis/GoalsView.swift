@@ -2,11 +2,13 @@ import SwiftUI
 import GRDB
 
 struct GoalsView: View {
+    var onNavigateToAdvisor: (() -> Void)?
     @State private var goals: [FinancialGoal] = []
     @State private var filter: GoalFilter = .all
     @State private var hasInitializedFilter = false
     @State private var cancellable: AnyDatabaseCancellable?
     @AppStorage("appLanguage") private var appLanguage = "en"
+    @ObservedObject private var goalService = GoalGenerationService.shared
     private var l10n: L10n { L10n(appLanguage) }
 
     enum GoalFilter: String, CaseIterable {
@@ -21,13 +23,21 @@ struct GoalsView: View {
             HStack {
                 Text(l10n.financialGoals)
                     .font(.title2).fontWeight(.bold)
+                if goalService.isGenerating {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text(l10n.generatingGoals)
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
-                Picker(l10n.financialGoals, selection: $filter) {
+                Picker("", selection: $filter) {
                     Text(l10n.active).tag(GoalFilter.active)
                     Text(l10n.suggested).tag(GoalFilter.suggested)
                     Text(l10n.completed).tag(GoalFilter.completed)
                     Text(l10n.all).tag(GoalFilter.all)
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 300)
             }
@@ -38,11 +48,22 @@ struct GoalsView: View {
             if goals.isEmpty {
                 Spacer()
                 if filter == .all {
-                    ContentUnavailableView(
-                        l10n.noGoalsYet,
-                        systemImage: "target",
-                        description: Text(l10n.noGoalsDescription)
-                    )
+                    VStack(spacing: 16) {
+                        ContentUnavailableView(
+                            l10n.noGoalsYet,
+                            systemImage: "target",
+                            description: Text(l10n.noGoalsDescription)
+                        )
+                        if let onNavigateToAdvisor {
+                            Button {
+                                onNavigateToAdvisor()
+                            } label: {
+                                Label(l10n.goToAdvisor, systemImage: "brain.head.profile.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                        }
+                    }
                 } else {
                     let filterName: String = {
                         switch filter {
@@ -62,6 +83,24 @@ struct GoalsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 12) {
+                        // Advisor attribution banner
+                        if let onNavigateToAdvisor {
+                            HStack(spacing: 8) {
+                                Image(systemName: "brain.head.profile.fill")
+                                    .foregroundStyle(.purple)
+                                Text(l10n.goalsFromAdvisor)
+                                    .font(.callout).foregroundStyle(.secondary)
+                                Spacer()
+                                Button(l10n.goToAdvisor) {
+                                    onNavigateToAdvisor()
+                                }
+                                .buttonStyle(.bordered).controlSize(.small)
+                            }
+                            .padding(12)
+                            .background(.purple.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+
                         let shortTerm = goals.filter { $0.type == "short_term" }
                         let longTerm = goals.filter { $0.type == "long_term" }
 
@@ -78,15 +117,15 @@ struct GoalsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("Goals")
+        .navigationTitle(l10n.financialGoals)
         .onAppear { startObservation() }
         .onDisappear { cancellable?.cancel() }
         .onChange(of: filter) { _, _ in loadGoals() }
     }
 
     private func goalSection(title: String, goals: [FinancialGoal]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.title3).fontWeight(.semibold).foregroundStyle(.secondary)
             ForEach(goals, id: \.id) { goal in
                 goalCard(goal)
             }
@@ -94,70 +133,79 @@ struct GoalsView: View {
     }
 
     private func goalCard(_ goal: FinancialGoal) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
                 Image(systemName: goalIcon(goal.category ?? "savings"))
+                    .font(.title3)
                     .foregroundStyle(goalColor(goal.category ?? "savings"))
                 Text(goal.title)
-                    .font(.callout).fontWeight(.semibold)
+                    .font(.body).fontWeight(.semibold)
                 Spacer()
                 statusBadge(goal.status)
             }
 
             Text(goal.description)
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.body).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Progress section for accepted/completed goals
             if goal.status == "accepted" || goal.status == "completed" {
-                progressSection(goal)
+                let displayGoal: FinancialGoal = {
+                    if goal.status == "completed" && goal.progress < 100 {
+                        var g = goal
+                        g.progress = 100
+                        return g
+                    }
+                    return goal
+                }()
+                progressSection(displayGoal)
             }
 
-            HStack {
+            HStack(spacing: 16) {
                 if let amount = goal.targetAmount {
                     Label("\(String(format: "%.0f", amount))", systemImage: "dollarsign.circle")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 if let date = goal.targetDate {
                     Label(date.prefix(10).description, systemImage: "calendar")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
 
                 if goal.status == "suggested" {
                     Button(l10n.accept) { updateStatus(goal.id, "accepted") }
-                        .buttonStyle(.bordered).controlSize(.mini)
+                        .buttonStyle(.bordered).controlSize(.small)
                     Button(l10n.dismiss) { updateStatus(goal.id, "dismissed") }
-                        .buttonStyle(.plain).controlSize(.mini)
+                        .buttonStyle(.plain).controlSize(.small)
                         .foregroundStyle(.secondary)
                 } else if goal.status == "accepted" {
                     Button(l10n.markComplete) { completeGoal(goal.id) }
-                        .buttonStyle(.borderedProminent).controlSize(.mini)
+                        .buttonStyle(.borderedProminent).controlSize(.small)
                 }
             }
         }
-        .padding(14)
+        .padding(18)
         .background(.background.secondary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Progress
 
     private func progressSection(_ goal: FinancialGoal) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(l10n.progress)
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
                 Spacer()
                 Text("\(Int(goal.progress))%")
-                    .font(.caption).fontWeight(.bold).monospacedDigit()
+                    .font(.callout).fontWeight(.bold).monospacedDigit()
                     .foregroundStyle(goal.progress >= 100 ? .green : .primary)
             }
 
             if goal.status == "accepted" {
                 Slider(value: progressBinding(for: goal.id), in: 0...100, step: 5)
                     .tint(progressColor(goal.progress))
-                    .controlSize(.mini)
+                    .controlSize(.small)
             } else {
                 ProgressView(value: min(goal.progress, 100), total: 100)
                     .tint(.green)
@@ -226,10 +274,10 @@ struct GoalsView: View {
             }
         }()
         return Text(localizedStatus)
-            .font(.system(size: 10, weight: .bold))
+            .font(.system(size: 12, weight: .bold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
             .background(statusColor(status), in: Capsule())
     }
 

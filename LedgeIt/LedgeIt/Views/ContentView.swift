@@ -116,7 +116,7 @@ struct ContentView: View {
                     case .advisor:
                         AdvisorSettingsView()
                     case .goals:
-                        GoalsView()
+                        GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
                     case .settings:
                         SettingsView(onKeySaved: {
                             checkApiKeys()
