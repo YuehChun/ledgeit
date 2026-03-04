@@ -46,8 +46,19 @@ final class StatementService {
         }
         let passwords = StatementPassword.loadAll()
         for pw in passwords {
-            if document.unlock(withPassword: pw.password) {
-                return (document, pw)
+            // Create a fresh PDFDocument for each attempt to avoid stale unlock state
+            guard let attempt = PDFDocument(data: data) else { continue }
+            if attempt.unlock(withPassword: pw.password) {
+                // Validate the unlock actually worked by checking if text is extractable
+                let hasText = (0..<min(attempt.pageCount, 3)).contains { i in
+                    guard let page = attempt.page(at: i),
+                          let text = page.string else { return false }
+                    return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                if hasText {
+                    return (attempt, pw)
+                }
+                print("[StatementService] Password '\(pw.bankName)' unlocked PDF but no text extracted — skipping (false positive)")
             }
         }
         throw StatementError.noMatchingPassword

@@ -24,11 +24,12 @@ struct GoalsView: View {
                 Text(l10n.financialGoals)
                     .font(.title2).fontWeight(.bold)
                 if goalService.isGenerating {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text(l10n.generatingGoals)
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
+                    AIProgressView(
+                        title: l10n.generatingGoals,
+                        steps: ["Analyzing spending", "Creating goals", "Calculating targets"],
+                        currentStep: goalService.currentStep
+                    )
+                    .frame(width: 240)
                 }
                 Spacer()
                 Picker("", selection: $filter) {

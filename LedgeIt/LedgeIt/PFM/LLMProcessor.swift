@@ -47,6 +47,24 @@ struct LLMProcessor: Sendable {
             case amount, currency, merchant, description, date, type
             case categoryHint = "category_hint"
         }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            amount = Self.decodeFlexibleDouble(from: container, key: .amount)
+            currency = try container.decodeIfPresent(String.self, forKey: .currency)
+            merchant = try container.decodeIfPresent(String.self, forKey: .merchant)
+            description = try container.decodeIfPresent(String.self, forKey: .description)
+            date = try container.decodeIfPresent(String.self, forKey: .date)
+            type = try container.decodeIfPresent(String.self, forKey: .type)
+            categoryHint = try container.decodeIfPresent(String.self, forKey: .categoryHint)
+        }
+
+        private static func decodeFlexibleDouble(from container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Double? {
+            if let val = try? container.decode(Double.self, forKey: key) { return val }
+            if let str = try? container.decode(String.self, forKey: key) { return Double(str) }
+            if let val = try? container.decode(Int.self, forKey: key) { return Double(val) }
+            return nil
+        }
     }
 
     struct BankInfo: Codable, Sendable {
@@ -72,6 +90,18 @@ struct LLMProcessor: Sendable {
             case amountDue = "amount_due"
             case currency
             case statementPeriod = "statement_period"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            bankName = try container.decodeIfPresent(String.self, forKey: .bankName)
+            dueDate = try container.decodeIfPresent(String.self, forKey: .dueDate)
+            currency = try container.decodeIfPresent(String.self, forKey: .currency)
+            statementPeriod = try container.decodeIfPresent(String.self, forKey: .statementPeriod)
+            if let val = try? container.decode(Double.self, forKey: .amountDue) { amountDue = val }
+            else if let str = try? container.decode(String.self, forKey: .amountDue) { amountDue = Double(str) }
+            else if let val = try? container.decode(Int.self, forKey: .amountDue) { amountDue = Double(val) }
+            else { amountDue = nil }
         }
     }
 
@@ -392,7 +422,11 @@ struct LLMProcessor: Sendable {
             )
 
             if let data = fixed.data(using: .utf8) {
-                return try JSONDecoder().decode(T.self, from: data)
+                do {
+                    return try JSONDecoder().decode(T.self, from: data)
+                } catch {
+                    print("[LLMProcessor] JSON decode failed: \(error)")
+                }
             }
         }
 

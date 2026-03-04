@@ -11,6 +11,7 @@ struct DashboardView: View {
     @State private var upcomingBills: [CreditCardBill] = []
     @State private var spendingAnalysis: LLMProcessor.SpendingAnalysis?
     @State private var isAnalyzing = false
+    @State private var analysisStep = 0
     @State private var analysisError: String?
     @State private var errorMessage: String?
     @State private var cancellable: AnyDatabaseCancellable?
@@ -407,10 +408,12 @@ struct DashboardView: View {
                 Label("AI Insights", systemImage: "brain").font(.headline)
                 Spacer()
                 if isAnalyzing {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Analyzing...").font(.caption).foregroundStyle(.secondary)
-                    }
+                    AIProgressView(
+                        title: "AI Analysis",
+                        steps: ["Loading transactions", "Analyzing patterns", "Generating insights"],
+                        currentStep: analysisStep
+                    )
+                    .frame(width: 240)
                 } else {
                     Button { loadAIInsights() } label: {
                         Label("Analyze", systemImage: "sparkles").font(.callout)
@@ -475,9 +478,11 @@ struct DashboardView: View {
         guard let summary, !isAnalyzing else { return }
         isAnalyzing = true
         analysisError = nil
+        analysisStep = 0
         Task {
-            defer { isAnalyzing = false }
+            defer { isAnalyzing = false; analysisStep = 0 }
             do {
+                analysisStep = 0 // Loading transactions
                 let openRouter = try OpenRouterService()
                 let processor = LLMProcessor(openRouter: openRouter)
                 let summaryText = """
@@ -490,7 +495,9 @@ struct DashboardView: View {
                 let txnText = recentTransactions.prefix(15).map { tx in
                     "\(tx.transactionDate ?? "?") | \(tx.merchant ?? "?") | \(String(format: "%.2f", tx.amount)) \(tx.currency) | \(tx.category ?? "?")"
                 }.joined(separator: "\n")
+                analysisStep = 1 // Analyzing patterns
                 spendingAnalysis = try await processor.analyzeSpending(summary: summaryText, trends: trendsText, recentTransactions: txnText)
+                analysisStep = 2 // Generating insights
             } catch {
                 analysisError = "Analysis failed: \(error.localizedDescription)"
             }

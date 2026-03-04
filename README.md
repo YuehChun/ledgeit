@@ -9,16 +9,20 @@ A native macOS app that automatically extracts financial transactions from your 
 3. **Transaction Extraction** — Extracts merchant, amount, currency, date from receipts, invoices, and bank notifications
 4. **Credit Card Bills** — Detects statement emails and tracks due dates / amounts owed
 5. **Auto-Categorization** — 15 spending categories with subcategories (food, transport, utilities, etc.)
-6. **Financial Analysis** — AI-powered spending analysis with health scores, category insights, and savings rate trends
-7. **AI Advisor** — Multi-persona financial advisor (conservative / moderate / aggressive / custom) with iterative prompt optimization
-8. **Financial Goals** — AI-suggested goals with progress tracking, accept/dismiss workflow, and progress sliders
-9. **Prompt Version Control** — Version-tracked advisor prompts with user feedback → LLM optimization loop
-10. **Transaction Verification** — Edit and flag AI-extracted transactions for accuracy
-11. **Calendar Sync** — Creates Google Calendar events for each transaction
-12. **Auto-Sync** — Background sync every 15 minutes when the app is running
-13. **AI Chat** — Natural language chat interface for querying financial data with streaming responses and tool calling
-14. **MCP Server** — Model Context Protocol (stdio) server exposing financial data to third-party AI agents (e.g., Claude Desktop)
-15. **Bilingual** — Full English and Traditional Chinese (繁體中文) support
+6. **Smart Deduplication** — Rule-based fuzzy matching + LLM tiebreaker to prevent duplicate transactions across email and PDF statement imports
+7. **Bill Reconciliation** — Automatically detects overlap between credit card bill totals and individual transactions
+8. **Financial Analysis** — AI-powered spending analysis with health scores, category insights, and savings rate trends
+9. **AI Advisor** — Multi-persona financial advisor (conservative / moderate / aggressive / custom) with iterative prompt optimization
+10. **Financial Goals** — AI-suggested goals with progress tracking, accept/dismiss workflow, and progress sliders (language-aware)
+11. **Prompt Version Control** — Version-tracked advisor prompts with user feedback → LLM optimization loop
+12. **Transaction Verification** — Edit and flag AI-extracted transactions for accuracy
+13. **Calendar Sync** — Creates Google Calendar events for each transaction
+14. **Auto-Sync** — Background sync every 15 minutes when the app is running
+15. **AI Chat** — Natural language chat interface for querying financial data with streaming responses and tool calling
+16. **MCP Server** — Model Context Protocol (stdio) server exposing financial data to third-party AI agents (e.g., Claude Desktop)
+17. **PDF Statement Import** — Decrypt and parse password-protected credit card PDFs with multi-layer LLM extraction
+18. **AI Progress UX** — Animated progress indicators with step-by-step checklists for all AI operations
+19. **Bilingual** — Full English and Traditional Chinese (繁體中文) support for UI and AI-generated content
 
 ## Screenshots
 
@@ -61,7 +65,8 @@ ExtractionPipeline
   ├── LLMProcessor (AI classification + extraction for uncertain emails)
   ├── AutoCategorizer (merchant → category mapping)
   ├── TransferDetector (inter-account transfer identification)
-  └── Deduplication (amount + currency + date)
+  ├── DeduplicationService (fuzzy matching + LLM tiebreaker)
+  └── BillReconciler (bill vs transaction overlap detection)
   │
   ▼
 transactions table ──► DashboardView, CalendarView, TransactionListView
@@ -124,7 +129,9 @@ LedgeIt/
 │   │   ├── GoalPlanner.swift         # AI goal suggestion & planning
 │   │   ├── AdvisorPersona.swift      # Persona definitions & resolution
 │   │   ├── PromptOptimizer.swift     # LLM-based prompt refinement
-│   │   └── PDFExtractor.swift        # PDF document parsing
+│   │   ├── PDFExtractor.swift        # PDF document parsing
+│   │   ├── DeduplicationService.swift # Smart dedup (fuzzy + LLM)
+│   │   └── BillReconciler.swift      # Bill vs transaction reconciliation
 │   ├── Services/
 │   │   ├── GmailService.swift        # Gmail REST API client
 │   │   ├── GoogleAuthService.swift   # OAuth 2.0 flow
@@ -134,6 +141,8 @@ LedgeIt/
 │   │   ├── PersonalFinanceService.swift # Dashboard data queries
 │   │   ├── KeychainService.swift     # Secure credential storage
 │   │   ├── PDFParserService.swift    # PDF text extraction
+│   │   ├── StatementService.swift   # PDF statement decrypt + extract pipeline
+│   │   ├── GoalGenerationService.swift # Background goal generation
 │   │   ├── ChatEngine.swift          # AI chat with tool-calling loop
 │   │   └── FinancialQueryService.swift # Shared query layer for chat & MCP
 │   ├── Views/
@@ -151,7 +160,9 @@ LedgeIt/
 │   │   │   ├── AnalysisDashboardView.swift  # AI spending analysis
 │   │   │   ├── AdvisorSettingsView.swift    # Persona + prompt management
 │   │   │   └── GoalsView.swift              # Goal tracking + progress
-│   │   └── Components/              # CategoryIcon, CategoryBadge, AmountText
+│   │   ├── Statements/
+│   │   │   └── StatementsView.swift       # PDF statement import + parsing
+│   │   └── Components/              # CategoryIcon, CategoryBadge, AmountText, AIProgressView
 │   ├── MCP/
 │   │   ├── MCPServer.swift           # stdio JSON-RPC MCP server
 │   │   └── MCPToolHandler.swift      # MCP tool definitions & execution
@@ -296,6 +307,8 @@ The MCP server reads JSON-RPC requests from stdin and writes responses to stdout
 | v4 | Added `confidence_score`, `is_verified`, `user_corrected` to transactions |
 | v5 | `financial_goals` |
 | v6 | `prompt_versions` |
+| v7 | `statement_imports`, `stored_passwords` |
+| v8 | `dedup_log`, dedup columns on `transactions` and `credit_card_bills` |
 
 ## License
 

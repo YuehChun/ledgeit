@@ -18,6 +18,7 @@ struct StatementsView: View {
     // Processing state
     @State private var processingAttachmentId: Int64?
     @State private var processStatus = ""
+    @State private var processingStep = 0
     @State private var extractedTransactions: [StatementService.ExtractedTransaction] = []
     @State private var extractedBankName: String?
     @State private var extractedFilename: String?
@@ -57,6 +58,7 @@ struct StatementsView: View {
                     isLoading: isLoadingAttachments,
                     processingId: processingAttachmentId,
                     processStatus: processStatus,
+                    processingStep: processingStep,
                     extractedTransactions: extractedTransactions,
                     extractedBankName: extractedBankName,
                     extractionError: extractionError,
@@ -200,19 +202,27 @@ struct StatementsView: View {
         processingAttachmentId = att.id
         extractionError = nil
         extractedTransactions = []
+        processingStep = 0
 
         Task {
             do {
-                // 1. Download PDF from Gmail
-                processStatus = l10n.decrypting
+                // 1. Download + decrypt PDF
+                processingStep = 0
                 let authService = GoogleAuthService()
                 let gmail = GmailService(accessTokenProvider: {
                     try await authService.getValidAccessToken()
                 })
                 let pdfData = try await gmail.getAttachment(messageId: emailId, attachmentId: gmailAttachmentId)
 
-                // 2. Decrypt + extract via service
+                // 2. Classify document
+                processingStep = 1
+
+                // 3. Extract transactions (handled inside processStatement)
+                processingStep = 2
                 let result = try await service.processStatement(data: pdfData, filename: att.filename ?? "statement.pdf")
+
+                // 4. Categorizing
+                processingStep = 3
                 extractedTransactions = result.transactions
                 extractedBankName = result.bankName
                 extractedFilename = att.filename ?? "statement.pdf"
@@ -222,6 +232,7 @@ struct StatementsView: View {
             }
             processingAttachmentId = nil
             processStatus = ""
+            processingStep = 0
         }
     }
 
@@ -386,6 +397,7 @@ private struct GmailPDFSection: View {
     let isLoading: Bool
     let processingId: Int64?
     let processStatus: String
+    let processingStep: Int
     let extractedTransactions: [StatementService.ExtractedTransaction]
     let extractedBankName: String?
     let extractionError: String?
@@ -503,11 +515,17 @@ private struct GmailPDFSection: View {
                             }
 
                             if isProcessingThis {
-                                HStack(spacing: 4) {
-                                    ProgressView().controlSize(.mini)
-                                    Text(processStatus)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
+                                AIProgressView(
+                                    title: l10n.parse,
+                                    steps: [
+                                        l10n.decrypting,
+                                        "Classifying document",
+                                        "Extracting transactions",
+                                        "Categorizing"
+                                    ],
+                                    currentStep: processingStep
+                                )
+                                .frame(width: 220)
                             } else if isImported {
                                 Text(l10n.imported)
                                     .font(.caption2).foregroundStyle(.green)

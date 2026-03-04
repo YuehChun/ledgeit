@@ -243,7 +243,7 @@ actor OpenRouterService {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
         request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
-        request.timeoutInterval = 60
+        request.timeoutInterval = 180
 
         var body: [String: Any] = [
             "model": model,
@@ -284,11 +284,27 @@ actor OpenRouterService {
             throw OpenRouterError.requestFailed(httpResponse.statusCode)
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
+        let json: Any
+        do {
+            json = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "non-utf8"
+            print("[OpenRouter] Failed to parse API response as JSON: \(bodyPreview)")
+            throw OpenRouterError.invalidResponse
+        }
+
+        guard let dict = json as? [String: Any],
+              let choices = dict["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            // Check for error in response
+            if let dict = json as? [String: Any], let error = dict["error"] as? [String: Any] {
+                let msg = error["message"] as? String ?? "Unknown API error"
+                print("[OpenRouter] API error: \(msg)")
+                throw OpenRouterError.requestFailed(-1)
+            }
+            print("[OpenRouter] Unexpected response structure: \(String(data: data.prefix(500), encoding: .utf8) ?? "")")
             throw OpenRouterError.invalidResponse
         }
 

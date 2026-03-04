@@ -33,6 +33,23 @@ struct PDFExtractor: Sendable {
             case statementPeriod = "statement_period"
             case amountType = "amount_type"
         }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            totalDue = Self.flexDouble(from: container, key: .totalDue)
+            minimumDue = Self.flexDouble(from: container, key: .minimumDue)
+            dueDate = try container.decodeIfPresent(String.self, forKey: .dueDate)
+            currency = try container.decodeIfPresent(String.self, forKey: .currency)
+            statementPeriod = try container.decodeIfPresent(String.self, forKey: .statementPeriod)
+            amountType = try container.decodeIfPresent(String.self, forKey: .amountType)
+        }
+
+        private static func flexDouble(from container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Double? {
+            if let val = try? container.decode(Double.self, forKey: key) { return val }
+            if let str = try? container.decode(String.self, forKey: key) { return Double(str) }
+            if let val = try? container.decode(Int.self, forKey: key) { return Double(val) }
+            return nil
+        }
     }
 
     /// Analyze PDF text content for structured financial data.
@@ -113,12 +130,14 @@ struct PDFExtractor: Sendable {
         }
 
         // Layer 1: Classify — is this a payment notice or transaction detail?
+        // NOTE: Do not pass bankHint as a strong signal — it may be wrong due to PDFKit false positives.
+        // Let the LLM detect the issuer from actual document content.
         let classifyPrompt = """
         Analyze this credit card PDF document and classify it.
+        Detect the bank/issuer name from the document content itself — do NOT rely on external hints.
         Return ONLY valid JSON, no markdown.
 
         Filename: \(filename)
-        Bank hint: \(bankHint ?? "unknown")
 
         Document text (first 2000 chars):
         \(String(truncated.prefix(2000)))
@@ -126,7 +145,7 @@ struct PDFExtractor: Sendable {
         Return JSON:
         {
           "document_type": "transaction_detail" | "payment_notice" | "annual_summary" | "other",
-          "issuer": "bank name",
+          "issuer": "bank name (detected from document content)",
           "currency": "TWD or USD etc",
           "statement_period": "YYYY-MM if detectable",
           "confidence": 0.0-1.0
@@ -142,13 +161,17 @@ struct PDFExtractor: Sendable {
             temperature: 0.0
         )
 
-        // Parse classification
+        // Parse classification — prefer LLM-detected issuer over password hint
         var detectedCurrency = "TWD"
-        var detectedIssuer = bankHint
+        var detectedIssuer: String? = nil
         if let data = cleanJSON(classifyResponse).data(using: .utf8),
            let info = try? JSONDecoder().decode(StatementClassification.self, from: data) {
             detectedCurrency = info.currency ?? "TWD"
-            if let issuer = info.issuer { detectedIssuer = issuer }
+            detectedIssuer = info.issuer
+        }
+        // Only fall back to bankHint if LLM couldn't detect the issuer
+        if detectedIssuer == nil || detectedIssuer?.isEmpty == true {
+            detectedIssuer = bankHint
         }
 
         // Layer 2: Full extraction with powerful model
@@ -265,7 +288,7 @@ struct PDFExtractor: Sendable {
             do {
                 return try JSONDecoder().decode(PDFFinancialData.self, from: data)
             } catch {
-                // Fall through to recovery
+                print("[PDFExtractor] Direct decode failed: \(error)")
             }
         }
 
@@ -277,7 +300,7 @@ struct PDFExtractor: Sendable {
                 do {
                     return try JSONDecoder().decode(PDFFinancialData.self, from: data)
                 } catch {
-                    // Fall through to truncation recovery
+                    print("[PDFExtractor] Extract-braces decode failed: \(error)")
                 }
             }
         }

@@ -52,9 +52,16 @@ struct FinancialAdvisor: Sendable {
             "\($0.label): spending=\(String(format: "%.0f", $0.spending)), income=\(String(format: "%.0f", $0.income)), savings_rate=\(String(format: "%.1f%%", $0.savingsRate * 100))"
         }.joined(separator: "\n")
 
-        let languageInstruction = language == "zh-Hant"
-            ? "You MUST write ALL text values in Traditional Chinese (繁體中文). "
-            : ""
+        let languageName: String
+        let languageInstruction: String
+        switch language {
+        case "zh-Hant":
+            languageName = "Traditional Chinese (繁體中文)"
+            languageInstruction = "CRITICAL: You MUST write ALL text values in Traditional Chinese (繁體中文). Do NOT use English for any user-facing text. "
+        default:
+            languageName = "English"
+            languageInstruction = ""
+        }
 
         let systemPrompt = """
         \(persona.spendingPhilosophy) \
@@ -104,6 +111,7 @@ struct FinancialAdvisor: Sendable {
         - Highlight any month-over-month spending increases > 30%
         - Provide max 3 action items, ordered by impact
         - Only include category_insights for categories with notable observations
+        - LANGUAGE: All user-facing text MUST be written in \(languageName)
         """
 
         let response = try await openRouter.complete(
