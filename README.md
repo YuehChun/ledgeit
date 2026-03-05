@@ -2,6 +2,64 @@
 
 A native macOS app that automatically extracts financial transactions from your Gmail, classifies them with AI, and presents them in a personal finance dashboard with AI-powered advisory, goal tracking, and calendar integration.
 
+## User Stories
+
+### [Where Did My Money Go This Month?](docs/user-stories/where-did-my-money-go.md)
+
+See your complete financial picture at a glance — spending, income, upcoming bills, category breakdown, and trends.
+
+![Dashboard](screenshots/dashboard.png)
+
+---
+
+### [Can I Afford a Trip?](docs/user-stories/can-i-afford-a-trip.md)
+
+Ask your finances questions in plain language. The AI searches your transaction data using local RAG (hybrid semantic + keyword search) and gives answers grounded in real numbers.
+
+![AI Advisory Chat](screenshots/ai_advisor_chatting.png)
+
+---
+
+### [Am I Financially Healthy?](docs/user-stories/am-i-financially-healthy.md)
+
+Get an AI-generated financial health score with category insights, warning flags, and actionable recommendations.
+
+![Financial Analysis](screenshots/financial_analysis.png)
+
+---
+
+### [Help Me Save Money](docs/user-stories/help-me-save-money.md)
+
+AI-suggested financial goals based on your spending patterns, with progress tracking and accept/dismiss workflow.
+
+![Financial Goals](screenshots/financial_goal.png)
+
+---
+
+### [Import My Credit Card PDF](docs/user-stories/import-my-credit-card-pdf.md)
+
+Decrypt and parse password-protected credit card PDFs. Extract dozens of transactions in one click with smart deduplication.
+
+![Statement Parser](screenshots/statements_parser.png)
+
+---
+
+### [Did the AI Get It Right?](docs/user-stories/did-the-ai-get-it-right.md)
+
+Review AI-extracted transactions grouped by source email. Verify accuracy, correct mistakes, and approve before they affect your reports.
+
+![Transaction Review](screenshots/transactions_review.png)
+
+---
+
+### [The Advisor Is Too Strict](docs/user-stories/the-advisor-is-too-strict.md)
+
+Customize your AI financial advisor's persona, budget limits, and behavior with natural language feedback and version-controlled prompts.
+
+![AI Advisor Tuning](screenshots/ai_advisor_tuning.png)
+
+---
+
 ## What It Does
 
 1. **Syncs Gmail** — Fetches emails via Gmail API (OAuth 2.0, read-only)
@@ -18,26 +76,11 @@ A native macOS app that automatically extracts financial transactions from your 
 12. **Transaction Verification** — Edit and flag AI-extracted transactions for accuracy
 13. **Calendar Sync** — Creates Google Calendar events for each transaction
 14. **Auto-Sync** — Background sync every 15 minutes when the app is running
-15. **AI Chat** — Natural language chat interface for querying financial data with streaming responses and tool calling
+15. **AI Chat** — Natural language chat interface with local RAG (multilingual embeddings + FTS5 hybrid search) and tool calling
 16. **MCP Server** — Model Context Protocol (stdio) server exposing financial data to third-party AI agents (e.g., Claude Desktop)
 17. **PDF Statement Import** — Decrypt and parse password-protected credit card PDFs with multi-layer LLM extraction
 18. **AI Progress UX** — Animated progress indicators with step-by-step checklists for all AI operations
 19. **Bilingual** — Full English and Traditional Chinese (繁體中文) support for UI and AI-generated content
-
-## Screenshots
-
-The app has 10 main views accessible from the sidebar:
-
-- **Dashboard** — Monthly spending/income summary, category breakdown chart, top merchants, spending velocity alert, upcoming credit card bills
-- **Chat** — AI-powered natural language chat for querying financial data (streaming responses, tool calling)
-- **Transactions** — Searchable/filterable table of all extracted transactions with edit/verify capabilities
-- **Review** — Email-grouped transaction review with edit and approval workflow
-- **Emails** — Raw Gmail inbox with processing status
-- **Calendar** — Month view with transaction dots and bill due date markers
-- **Financial Analysis** — AI-generated spending reports with health scores, category insights, savings rate trends, and action items
-- **Goals** — AI-suggested financial goals (short-term / long-term) with progress bars and accept/dismiss/complete workflow
-- **Settings** — API credentials, Google connection status, sync controls, language selection
-- **AI Advisor** — Persona selection, category budget tuning, feedback-driven prompt optimization, version history
 
 ## Tech Stack
 
@@ -47,6 +90,8 @@ The app has 10 main views accessible from the sidebar:
 | UI | SwiftUI (macOS 14+) |
 | Database | SQLite via [GRDB](https://github.com/groue/GRDB.swift) 7.0 |
 | AI/LLM | [OpenRouter](https://openrouter.ai) API (Claude, GPT, etc.) |
+| Embeddings | multilingual-e5-small (local, on-device) |
+| Vector Search | sqlite-vec + FTS5 hybrid search |
 | Auth | Google OAuth 2.0 (Desktop app flow) |
 | Package Manager | Swift Package Manager |
 | Secrets | macOS Keychain |
@@ -78,6 +123,9 @@ credit_card_bills table ──► DashboardView (upcoming bills), CalendarView (
   ├──► PromptOptimizer ──► AdvisorSettingsView (version-controlled prompts)
   │
   ▼
+EmbeddingService (multilingual-e5-small + sqlite-vec + FTS5)
+  │
+  ▼
 FinancialQueryService (shared query layer)
   ├──► ChatEngine + OpenRouter (streaming + tool calling) ──► ChatView
   └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
@@ -103,7 +151,7 @@ LedgeIt/
 │   ├── LedgeItApp.swift              # App entry point
 │   ├── Database/
 │   │   ├── AppDatabase.swift         # GRDB database setup
-│   │   └── DatabaseMigrations.swift  # Schema migrations (v1-v6)
+│   │   └── DatabaseMigrations.swift  # Schema migrations (v1-v14)
 │   ├── Models/
 │   │   ├── Email.swift
 │   │   ├── Transaction.swift
@@ -141,8 +189,9 @@ LedgeIt/
 │   │   ├── PersonalFinanceService.swift # Dashboard data queries
 │   │   ├── KeychainService.swift     # Secure credential storage
 │   │   ├── PDFParserService.swift    # PDF text extraction
-│   │   ├── StatementService.swift   # PDF statement decrypt + extract pipeline
+│   │   ├── StatementService.swift    # PDF statement decrypt + extract pipeline
 │   │   ├── GoalGenerationService.swift # Background goal generation
+│   │   ├── EmbeddingService.swift    # Multilingual embeddings + hybrid search
 │   │   ├── ChatEngine.swift          # AI chat with tool-calling loop
 │   │   └── FinancialQueryService.swift # Shared query layer for chat & MCP
 │   ├── Views/
@@ -274,19 +323,19 @@ Users can iteratively refine the advisor's behavior:
 
 ## AI Chat
 
-The Chat view provides a natural language interface for querying financial data. It uses OpenRouter (Claude Sonnet 4.5) with streaming responses and tool calling.
+The Chat view provides a natural language interface for querying financial data. It uses OpenRouter (Claude Sonnet 4.5) with streaming responses and tool calling, powered by local RAG with multilingual embeddings.
 
 ### Available Tools
 
 | Tool | Description |
 |------|------------|
+| `semantic_search` | Hybrid search (vector + FTS5 keyword) with cross-language support |
 | `get_transactions` | Query transactions with filters (date range, category, merchant, amount, type) |
 | `get_spending_summary` | Income, expenses, and net savings for a date range |
 | `get_category_breakdown` | Spending breakdown by category with percentages |
 | `get_top_merchants` | Top merchants by spending amount |
-| `get_upcoming_payments` | Unpaid credit card bills |
+| `get_upcoming_payments` | All unpaid credit card bills (including overdue) |
 | `get_goals` | Financial goals filtered by status |
-| `search_transactions` | Full-text search across merchants, descriptions, and categories |
 | `get_account_overview` | High-level account snapshot |
 
 The system prompt includes a live financial snapshot so the LLM has context before tool use.
@@ -295,20 +344,7 @@ The system prompt includes a live financial snapshot so the LLM has context befo
 
 LedgeIt includes a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server that exposes the same financial query tools to third-party AI agents (e.g., Claude Desktop, Cursor).
 
-The MCP server reads JSON-RPC requests from stdin and writes responses to stdout. It supports `initialize`, `tools/list`, and `tools/call` methods with the same 8 tools available in the chat interface.
-
-## Database Migrations
-
-| Version | Tables Added |
-|---------|-------------|
-| v1 | `emails`, `transactions`, `credit_card_bills`, `calendar_events`, `attachments`, `sync_state` |
-| v2 | Added `is_processed` column to emails |
-| v3 | `financial_reports` |
-| v4 | Added `confidence_score`, `is_verified`, `user_corrected` to transactions |
-| v5 | `financial_goals` |
-| v6 | `prompt_versions` |
-| v7 | `statement_imports`, `stored_passwords` |
-| v8 | `dedup_log`, dedup columns on `transactions` and `credit_card_bills` |
+The MCP server reads JSON-RPC requests from stdin and writes responses to stdout. It supports `initialize`, `tools/list`, and `tools/call` methods with the same tools available in the chat interface.
 
 ## License
 
