@@ -43,6 +43,16 @@ actor FinancialQueryService {
         }
     }
 
+    func getTransactions(ids: [Int64]) async throws -> [Transaction] {
+        guard !ids.isEmpty else { return [] }
+        return try await database.db.read { db in
+            try Transaction
+                .filter(ids.contains(Transaction.Columns.id))
+                .filter(Transaction.Columns.deletedAt == nil)
+                .fetchAll(db)
+        }
+    }
+
     func getTransactionSummary(period: DatePeriod) async throws -> SpendingSummary {
         try await database.db.read { db in
             let totalIncome = try Double.fetchOne(db, sql: """
