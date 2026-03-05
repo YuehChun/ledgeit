@@ -20,7 +20,9 @@ actor EmbeddingService {
         if let existing = modelBundle {
             return existing
         }
+        print("[EmbeddingService] Loading model: \(Self.modelName)...")
         let bundle = try await XLMRoberta.loadModelBundle(from: Self.modelName)
+        print("[EmbeddingService] Model loaded successfully.")
         modelBundle = bundle
         return bundle
     }

@@ -14,11 +14,13 @@ struct LedgeItApp: App {
             ContentView()
                 .environment(database)
                 .task {
+                    print("[EmbeddingService] Starting batch indexing task...")
                     let embeddingService = EmbeddingService()
                     do {
                         try await embeddingService.indexUnembeddedTransactions { current, total in
                             print("[EmbeddingService] Indexing \(current)/\(total) transactions...")
                         }
+                        print("[EmbeddingService] Batch indexing complete.")
                     } catch {
                         print("[EmbeddingService] Batch indexing failed: \(error)")
                     }
