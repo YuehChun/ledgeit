@@ -6,7 +6,8 @@ actor EmbeddingService {
     private let database: AppDatabase
     private var modelBundle: XLMRoberta.ModelBundle?
 
-    static let currentEmbeddingVersion = 2
+    // Bumped to 3: added "query:"/"passage:" prefixes required by E5 model
+    static let currentEmbeddingVersion = 3
     private static let defaultSearchLimit = 10
     private static let modelName = "intfloat/multilingual-e5-small"
 
@@ -20,18 +21,27 @@ actor EmbeddingService {
         if let existing = modelBundle {
             return existing
         }
-        print("[EmbeddingService] Loading model: \(Self.modelName)...")
-        let bundle = try await XLMRoberta.loadModelBundle(from: Self.modelName)
-        print("[EmbeddingService] Model loaded successfully.")
+        NSLog("[EmbeddingService] Loading model: %@", Self.modelName)
+        // Use HuggingFace cache directory to avoid re-downloading
+        let cacheBase = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/huggingface")
+        let bundle = try await XLMRoberta.loadModelBundle(
+            from: Self.modelName,
+            downloadBase: cacheBase
+        )
+        NSLog("[EmbeddingService] Model loaded successfully.")
         modelBundle = bundle
         return bundle
     }
 
     // MARK: - Embedding Generation
 
-    func generateEmbedding(for text: String) async throws -> [Float]? {
+    /// E5 models require "query: " prefix for search queries and "passage: " prefix for documents.
+    /// See: https://huggingface.co/intfloat/multilingual-e5-small
+    func generateEmbedding(for text: String, isQuery: Bool) async throws -> [Float]? {
+        let prefixed = isQuery ? "query: \(text)" : "passage: \(text)"
         let model = try await getOrLoadModel()
-        let encoded = try model.encode(text)
+        let encoded = try model.encode(prefixed)
         let result = await encoded.cast(to: Float.self).shapedArray(of: Float.self).scalars
         return Array(result)
     }
@@ -53,7 +63,7 @@ actor EmbeddingService {
     func embedTransaction(_ transaction: Transaction) async throws {
         guard let id = transaction.id else { return }
         let text = transactionText(transaction)
-        guard let vector = try await generateEmbedding(for: text) else { return }
+        guard let vector = try await generateEmbedding(for: text, isQuery: false) else { return }
 
         try await database.db.write { db in
             let vectorData = vector.withUnsafeBufferPointer { buffer in
@@ -78,7 +88,7 @@ actor EmbeddingService {
     }
 
     func search(query: String, limit: Int = defaultSearchLimit) async throws -> [SearchResult] {
-        guard let queryVector = try await generateEmbedding(for: query) else {
+        guard let queryVector = try await generateEmbedding(for: query, isQuery: true) else {
             return []
         }
 
@@ -102,6 +112,55 @@ actor EmbeddingService {
                 )
             }
         }
+    }
+
+    // MARK: - FTS5 Keyword Search
+
+    func ftsSearch(query: String, limit: Int = defaultSearchLimit) async throws -> [SearchResult] {
+        try await database.db.read { db in
+            // FTS5 MATCH with rank scoring
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT rowid, rank
+                FROM transactions_fts
+                WHERE transactions_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, arguments: [query, limit])
+
+            return rows.map { row in
+                SearchResult(
+                    transactionId: row["rowid"],
+                    distance: row["rank"]  // FTS5 rank (lower = better match)
+                )
+            }
+        }
+    }
+
+    // MARK: - Hybrid Search (Vector + FTS5 with RRF)
+
+    /// Combines vector similarity and FTS5 keyword search.
+    /// FTS5 matches are prioritized (keyword matches are precise), then vector-only matches fill remaining slots.
+    func hybridSearch(query: String, limit: Int = defaultSearchLimit) async throws -> [SearchResult] {
+        // Run both searches
+        async let vecResults = search(query: query, limit: limit * 3)
+        async let ftsResults = ftsSearch(query: query, limit: limit * 3)
+
+        let vec = try await vecResults
+        let fts = try await ftsResults
+
+        let ftsIds = Set(fts.map { $0.transactionId })
+
+        // Priority 1: FTS5 matches (keyword exact matches) — these are highly precise
+        var result: [SearchResult] = fts.map { r in
+            SearchResult(transactionId: r.transactionId, distance: r.distance)
+        }
+
+        // Priority 2: Vector-only matches (semantic similarity) — fill remaining slots
+        for r in vec where !ftsIds.contains(r.transactionId) {
+            result.append(r)
+        }
+
+        return Array(result.prefix(limit))
     }
 
     // MARK: - Batch Indexing

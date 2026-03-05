@@ -273,5 +273,53 @@ struct DatabaseMigrations {
             // Reset all embedding versions to force re-indexing
             try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
         }
+
+        // MARK: - v14: FTS5 for hybrid search + re-embed with E5 prefixes
+        migrator.registerMigration("v14") { db in
+            // FTS5 virtual table for keyword search on transactions
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE IF NOT EXISTS transactions_fts USING fts5(
+                    merchant,
+                    category,
+                    description,
+                    content='transactions',
+                    content_rowid='id'
+                )
+            """)
+
+            // Populate FTS5 from existing transactions
+            try db.execute(sql: """
+                INSERT INTO transactions_fts(rowid, merchant, category, description)
+                SELECT id, COALESCE(merchant, ''), COALESCE(category, ''), COALESCE(description, '')
+                FROM transactions
+                WHERE deleted_at IS NULL
+            """)
+
+            // Triggers to keep FTS5 in sync with transactions table
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON transactions BEGIN
+                    INSERT INTO transactions_fts(rowid, merchant, category, description)
+                    VALUES (NEW.id, COALESCE(NEW.merchant, ''), COALESCE(NEW.category, ''), COALESCE(NEW.description, ''));
+                END
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON transactions BEGIN
+                    INSERT INTO transactions_fts(transactions_fts, rowid, merchant, category, description)
+                    VALUES ('delete', OLD.id, COALESCE(OLD.merchant, ''), COALESCE(OLD.category, ''), COALESCE(OLD.description, ''));
+                END
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON transactions BEGIN
+                    INSERT INTO transactions_fts(transactions_fts, rowid, merchant, category, description)
+                    VALUES ('delete', OLD.id, COALESCE(OLD.merchant, ''), COALESCE(OLD.category, ''), COALESCE(OLD.description, ''));
+                    INSERT INTO transactions_fts(rowid, merchant, category, description)
+                    VALUES (NEW.id, COALESCE(NEW.merchant, ''), COALESCE(NEW.category, ''), COALESCE(NEW.description, ''));
+                END
+            """)
+
+            // Re-embed all transactions with proper "passage:" prefix
+            try db.execute(sql: "DELETE FROM transaction_embeddings")
+            try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
+        }
     }
 }

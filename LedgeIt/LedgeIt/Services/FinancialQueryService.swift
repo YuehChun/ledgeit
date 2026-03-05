@@ -164,12 +164,8 @@ actor FinancialQueryService {
 
     func getUpcomingPayments() async throws -> [CreditCardBill] {
         try await database.db.read { db in
-            let fmt = DateFormatter()
-            fmt.dateFormat = "yyyy-MM-dd"
-            let today = fmt.string(from: Date())
-
+            // Return ALL unpaid bills (including past-due) so users see overdue payments
             return try CreditCardBill
-                .filter(CreditCardBill.Columns.dueDate >= today)
                 .filter(CreditCardBill.Columns.isPaid == false)
                 .order(CreditCardBill.Columns.dueDate.asc)
                 .fetchAll(db)

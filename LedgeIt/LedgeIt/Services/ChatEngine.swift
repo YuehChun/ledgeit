@@ -1,5 +1,20 @@
 import Foundation
 
+private let chatLogFile: URL = {
+    let url = URL(fileURLWithPath: "/tmp/LedgeIt-chat.log")
+    FileManager.default.createFile(atPath: url.path, contents: nil)
+    return url
+}()
+
+private func chatLog(_ msg: String) {
+    let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(msg)\n"
+    if let handle = try? FileHandle(forWritingTo: chatLogFile) {
+        handle.seekToEndOfFile()
+        handle.write(line.data(using: .utf8)!)
+        handle.closeFile()
+    }
+}
+
 actor ChatEngine {
     private let queryService: FinancialQueryService
     private let embeddingService: EmbeddingService
@@ -54,6 +69,7 @@ actor ChatEngine {
         continuation: AsyncStream<ChatStreamEvent>.Continuation
     ) async {
         do {
+            chatLog("User: \(message)")
             // Ensure OpenRouterService is initialized
             let router = try getOrCreateOpenRouter()
 
@@ -115,8 +131,10 @@ actor ChatEngine {
 
                 // If no tool call, we are done
                 guard let tc = toolCall else {
+                    chatLog("No tool call in this iteration, done.")
                     break
                 }
+                chatLog("Tool call: \(tc.name)")
 
                 // Execute tool call
                 continuation.yield(.toolCallStarted(tc.name))
@@ -210,10 +228,14 @@ actor ChatEngine {
             - Respond in the same language the user uses.
 
             ## Tool Selection
-            - Use `semantic_search` when the user asks vague or conceptual questions (e.g., "where did I spend on entertainment?", "any unusual purchases?", "food-related expenses")
-            - Use `get_transactions` or `search_transactions` when the user specifies exact filters (date range, merchant name, amount)
-            - You can combine both: use semantic_search first to discover relevant transactions, then get_transactions for precise filtering
-            - `semantic_search` supports any language — you can pass the user's query directly without translation
+            - Use `semantic_search` when the user asks about specific merchants, brands, products, or conceptual spending categories. It uses hybrid search (vector + keyword).
+            - CRITICAL: Transaction data is stored in BOTH English and Chinese. When searching, ALWAYS provide BOTH the original term AND its translation in the `queries` array. Examples:
+              - User asks "寶可夢" → queries: ["寶可夢", "Pokémon", "Pokemon"]
+              - User asks "星巴克" → queries: ["星巴克", "Starbucks"]
+              - User asks "日本旅遊" → queries: ["日本", "Japan", "JR", "虎航", "Tigerair"]
+              - User asks "Uber Eats" → queries: ["Uber Eats", "外送"]
+            - Use `get_transactions` or `search_transactions` when the user specifies exact filters (date range, amount range, transaction type).
+            - You can combine both: use semantic_search first to discover relevant transactions, then get_transactions for precise filtering.
             """
     }
 
@@ -277,7 +299,7 @@ actor ChatEngine {
             ),
             OpenRouterService.ToolDefinition(
                 name: "get_upcoming_payments",
-                description: "Get upcoming unpaid credit card bills",
+                description: "Get all unpaid credit card bills (including overdue). Use when user asks about credit card payments, due dates, or bills.",
                 parameters: [
                     "type": "object",
                     "properties": [:] as [String: Any],
@@ -317,14 +339,18 @@ actor ChatEngine {
             ),
             OpenRouterService.ToolDefinition(
                 name: "semantic_search",
-                description: "Search transactions by meaning using semantic similarity. Use when user asks vague or conceptual questions about spending patterns, categories, or merchants in natural language. Supports any language (Chinese, English, etc.). For specific filters (date, amount, exact merchant), use get_transactions instead.",
+                description: "Search transactions using hybrid search (semantic + keyword). IMPORTANT: Always provide BOTH the original term AND its English/Chinese translation in the queries array for cross-language matching.",
                 parameters: [
                     "type": "object",
                     "properties": [
-                        "query": ["type": "string", "description": "Natural language search query describing what to find (any language)"],
+                        "queries": [
+                            "type": "array",
+                            "items": ["type": "string"],
+                            "description": "Search queries - include both original and translated terms (e.g., [\"寶可夢\", \"Pokémon\", \"Pokemon\"])"
+                        ] as [String: Any],
                         "limit": ["type": "integer", "description": "Max results to return (default 10)"]
                     ] as [String: Any],
-                    "required": ["query"] as [String]
+                    "required": ["queries"] as [String]
                 ] as [String: Any]
             )
         ]
@@ -333,6 +359,7 @@ actor ChatEngine {
     // MARK: - Tool Execution
 
     private func executeTool(name: String, arguments: String) async throws -> String {
+        chatLog("executeTool: name=\(name) args=\(arguments)")
         let args = parseArguments(arguments)
 
         switch name {
@@ -409,8 +436,15 @@ actor ChatEngine {
             return encodeToJSON(overview)
 
         case "semantic_search":
-            guard let query = args["query"] as? String else {
-                return "Error: query parameter is required"
+            // Support both "queries" (array) and legacy "query" (string)
+            var queries: [String] = []
+            if let arr = args["queries"] as? [String] {
+                queries = arr
+            } else if let single = args["query"] as? String {
+                queries = [single]
+            }
+            guard !queries.isEmpty else {
+                return "Error: queries parameter is required"
             }
             let limit: Int
             if let intVal = args["limit"] as? Int {
@@ -420,12 +454,35 @@ actor ChatEngine {
             } else {
                 limit = 10
             }
-            let results = try await embeddingService.search(query: query, limit: limit)
-            if results.isEmpty {
-                return "No semantically similar transactions found for: \(query)"
+            chatLog("semantic_search queries=\(queries) limit=\(limit)")
+
+            // Run hybrid search for each query, merge with RRF
+            var bestScores: [Int64: Float] = [:]
+            for q in queries {
+                let results = try await embeddingService.hybridSearch(query: q, limit: limit)
+                chatLog("  query '\(q)': \(results.count) results")
+                for r in results {
+                    // Keep best (most negative = highest RRF) score per transaction
+                    if let existing = bestScores[r.transactionId] {
+                        bestScores[r.transactionId] = min(existing, r.distance)
+                    } else {
+                        bestScores[r.transactionId] = r.distance
+                    }
+                }
             }
-            let ids = results.map { $0.transactionId }
-            let transactions = try await queryService.getTransactions(ids: ids)
+
+            // Sort by best score (most negative = best match)
+            let sorted = bestScores.sorted { $0.value < $1.value }
+            let topIds = sorted.prefix(limit).map { $0.key }
+            chatLog("merged \(bestScores.count) unique results, top \(topIds.count)")
+
+            if topIds.isEmpty {
+                return "No transactions found for: \(queries.joined(separator: ", "))"
+            }
+            let transactions = try await queryService.getTransactions(ids: Array(topIds))
+            for t in transactions {
+                chatLog("  tx: \(t.merchant ?? "?") id=\(t.id ?? 0) amt=\(t.amount)")
+            }
             return formatTransactions(transactions)
 
         default:
@@ -471,13 +528,18 @@ actor ChatEngine {
 
     private func formatBills(_ bills: [CreditCardBill]) -> String {
         if bills.isEmpty {
-            return "No upcoming payments found."
+            return "No unpaid bills found."
         }
 
-        var lines = ["\(bills.count) upcoming payment(s):"]
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        let today = fmt.string(from: Date())
+
+        var lines = ["\(bills.count) unpaid bill(s):"]
         for bill in bills {
             let amount = String(format: "%.2f", bill.amountDue)
-            lines.append("- \(bill.bankName) | Due: \(bill.dueDate) | \(amount) \(bill.currency)")
+            let status = bill.dueDate < today ? " [OVERDUE]" : ""
+            lines.append("- \(bill.bankName) | Due: \(bill.dueDate) | \(amount) \(bill.currency)\(status)")
         }
         return lines.joined(separator: "\n")
     }
