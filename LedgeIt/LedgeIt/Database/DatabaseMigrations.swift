@@ -258,5 +258,20 @@ struct DatabaseMigrations {
                 )
             """)
         }
+        // MARK: - v13: Switch to multilingual embedding model (384-dim)
+        migrator.registerMigration("v13") { db in
+            // Drop old 512-dim embeddings (NLEmbedding English-only)
+            try db.execute(sql: "DROP TABLE IF EXISTS transaction_embeddings")
+
+            // Create new vec0 table with 384-dim (multilingual-e5-small)
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE transaction_embeddings USING vec0(
+                    embedding float[384]
+                )
+            """)
+
+            // Reset all embedding versions to force re-indexing
+            try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
+        }
     }
 }

@@ -1,28 +1,37 @@
 import Foundation
-import NaturalLanguage
-import Accelerate
 import GRDB
+import Embeddings
 
 actor EmbeddingService {
     private let database: AppDatabase
+    private var modelBundle: XLMRoberta.ModelBundle?
 
-    static let currentEmbeddingVersion = 1
+    static let currentEmbeddingVersion = 2
     private static let defaultSearchLimit = 10
+    private static let modelName = "intfloat/multilingual-e5-small"
 
     init(database: AppDatabase = .shared) {
         self.database = database
     }
 
+    // MARK: - Model Loading
+
+    private func getOrLoadModel() async throws -> XLMRoberta.ModelBundle {
+        if let existing = modelBundle {
+            return existing
+        }
+        let bundle = try await XLMRoberta.loadModelBundle(from: Self.modelName)
+        modelBundle = bundle
+        return bundle
+    }
+
     // MARK: - Embedding Generation
 
-    func generateEmbedding(for text: String) -> [Float]? {
-        guard let embedding = NLEmbedding.sentenceEmbedding(for: .english) else {
-            return nil
-        }
-        guard let vector = embedding.vector(for: text) else {
-            return nil
-        }
-        return vector.map { Float($0) }
+    func generateEmbedding(for text: String) async throws -> [Float]? {
+        let model = try await getOrLoadModel()
+        let encoded = try model.encode(text)
+        let result = await encoded.cast(to: Float.self).shapedArray(of: Float.self).scalars
+        return Array(result)
     }
 
     func transactionText(_ transaction: Transaction) -> String {
@@ -42,14 +51,14 @@ actor EmbeddingService {
     func embedTransaction(_ transaction: Transaction) async throws {
         guard let id = transaction.id else { return }
         let text = transactionText(transaction)
-        guard let vector = generateEmbedding(for: text) else { return }
+        guard let vector = try await generateEmbedding(for: text) else { return }
 
         try await database.db.write { db in
             let vectorData = vector.withUnsafeBufferPointer { buffer in
                 Data(buffer: buffer)
             }
             try db.execute(
-                sql: "INSERT INTO transaction_embeddings(rowid, embedding) VALUES (?, ?)",
+                sql: "INSERT OR REPLACE INTO transaction_embeddings(rowid, embedding) VALUES (?, ?)",
                 arguments: [id, vectorData]
             )
             try db.execute(
@@ -67,7 +76,7 @@ actor EmbeddingService {
     }
 
     func search(query: String, limit: Int = defaultSearchLimit) async throws -> [SearchResult] {
-        guard let queryVector = generateEmbedding(for: query) else {
+        guard let queryVector = try await generateEmbedding(for: query) else {
             return []
         }
 

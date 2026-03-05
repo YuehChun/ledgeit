@@ -588,7 +588,7 @@ private struct PaymentSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(l10n.totalDue)
                             .font(.caption).foregroundStyle(.secondary)
-                        Text("\(summary.currency ?? "TWD") \(String(format: "%,.0f", total))")
+                        Text("\(summary.currency ?? "TWD") \(String(format: "%.0f", total))")
                             .font(.title3).fontWeight(.bold).foregroundStyle(.red)
                     }
                 }
@@ -598,7 +598,7 @@ private struct PaymentSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(l10n.minimumDue)
                             .font(.caption).foregroundStyle(.secondary)
-                        Text("\(summary.currency ?? "TWD") \(String(format: "%,.0f", minimum))")
+                        Text("\(summary.currency ?? "TWD") \(String(format: "%.0f", minimum))")
                             .font(.callout).fontWeight(.semibold)
                     }
                 }

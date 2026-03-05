@@ -16,6 +16,21 @@ enum KeychainService: Sendable {
         case googleRefreshToken = "google_refresh_token"
     }
 
+    /// Call once at app startup to load all Keychain entries with a single prompt.
+    static func preload() {
+        cache.ensureLoaded {
+            var result: [String: String] = [:]
+            // Load main credentials
+            let all = loadAllFromKeychain()
+            for (k, v) in all {
+                result[k] = v
+            }
+            return result
+        }
+        // Also pre-warm raw account cache (e.g. statement passwords)
+        _ = loadRaw(account: StatementPassword.keychainAccount)
+    }
+
     static func save(key: Key, value: String) throws {
         var all = loadAll()
         all[key.rawValue] = value
@@ -28,14 +43,11 @@ enum KeychainService: Sendable {
         if let cached = cache.get(key: key) {
             return cached
         }
-        // Single Keychain read loads all keys into cache
-        let all = loadAll()
-        for (k, v) in all {
-            if let enumKey = Key(rawValue: k) {
-                cache.set(key: enumKey, value: v)
-            }
+        // Single Keychain read loads all keys into cache (locked to prevent concurrent reads)
+        cache.ensureLoaded {
+            loadAllFromKeychain()
         }
-        return all[key.rawValue]
+        return cache.get(key: key)
     }
 
     static func delete(key: Key) {
@@ -68,6 +80,22 @@ enum KeychainService: Sendable {
     // MARK: - Private (single Keychain entry as JSON)
 
     private static func loadAll() -> [String: String] {
+        // Check cache first
+        let cached = cache.getAllCredentials()
+        if !cached.isEmpty { return cached }
+
+        // Fall through to Keychain
+        let all = loadAllFromKeychain()
+        for (k, v) in all {
+            if let enumKey = Key(rawValue: k) {
+                cache.set(key: enumKey, value: v)
+            }
+        }
+        return all
+    }
+
+    /// Direct Keychain read without cache — only call from preload/ensureLoaded.
+    private static func loadAllFromKeychain() -> [String: String] {
         // Try new consolidated format first
         if let dict = loadRawDict(account: accountName) {
             return dict
@@ -159,6 +187,10 @@ enum KeychainService: Sendable {
     // MARK: - Raw Account Storage
 
     static func loadRaw(account: String) -> String? {
+        // Check raw cache first
+        if let cached = cache.getRaw(account: account) {
+            return cached
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -170,8 +202,10 @@ enum KeychainService: Sendable {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data,
               let str = String(data: data, encoding: .utf8) else {
+            cache.setRaw(account: account, value: "")
             return nil
         }
+        cache.setRaw(account: account, value: str)
         return str
     }
 
@@ -195,18 +229,45 @@ enum KeychainService: Sendable {
             throw NSError(domain: "KeychainService", code: Int(status),
                           userInfo: [NSLocalizedDescriptionKey: "Keychain save failed: \(status)"])
         }
+        cache.setRaw(account: account, value: value)
     }
 }
 
-// Thread-safe in-memory cache using actor-like manual locking
+// Thread-safe in-memory cache using manual locking
 private final class CredentialCache: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String: String] = [:]
+    private var rawStorage: [String: String] = [:]
+    private var credentialsLoaded = false
+
+    /// Load credentials exactly once. Concurrent callers block until the first finishes.
+    func ensureLoaded(_ loader: () -> [String: String]) {
+        lock.lock()
+        if credentialsLoaded {
+            lock.unlock()
+            return
+        }
+        // Release lock during Keychain I/O would allow races, so keep it held.
+        // Keychain reads are fast; the prompt is the slow part but only happens once.
+        let all = loader()
+        for (k, v) in all {
+            storage[k] = v
+        }
+        credentialsLoaded = true
+        lock.unlock()
+    }
 
     func get(key: KeychainService.Key) -> String? {
         lock.lock()
         defer { lock.unlock() }
         return storage[key.rawValue]
+    }
+
+    func getAllCredentials() -> [String: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard credentialsLoaded else { return [:] }
+        return storage
     }
 
     func set(key: KeychainService.Key, value: String) {
@@ -221,10 +282,25 @@ private final class CredentialCache: @unchecked Sendable {
         storage.removeValue(forKey: key.rawValue)
     }
 
+    func getRaw(account: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let val = rawStorage[account] else { return nil }
+        return val.isEmpty ? nil : val
+    }
+
+    func setRaw(account: String, value: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        rawStorage[account] = value
+    }
+
     func clear() {
         lock.lock()
         defer { lock.unlock() }
         storage.removeAll()
+        rawStorage.removeAll()
+        credentialsLoaded = false
     }
 }
 

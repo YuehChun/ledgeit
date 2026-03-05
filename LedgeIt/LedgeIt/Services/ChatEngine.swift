@@ -213,7 +213,7 @@ actor ChatEngine {
             - Use `semantic_search` when the user asks vague or conceptual questions (e.g., "where did I spend on entertainment?", "any unusual purchases?", "food-related expenses")
             - Use `get_transactions` or `search_transactions` when the user specifies exact filters (date range, merchant name, amount)
             - You can combine both: use semantic_search first to discover relevant transactions, then get_transactions for precise filtering
-            - IMPORTANT: `semantic_search` only understands English. Always translate the user's query to English before calling it (e.g., "寶可夢" → "Pokemon", "餐廳" → "restaurant dining", "交通費" → "transportation")
+            - `semantic_search` supports any language — you can pass the user's query directly without translation
             """
     }
 
@@ -317,11 +317,11 @@ actor ChatEngine {
             ),
             OpenRouterService.ToolDefinition(
                 name: "semantic_search",
-                description: "Search transactions by meaning using semantic similarity. Use when user asks vague or conceptual questions about spending patterns, categories, or merchants in natural language. For specific filters (date, amount, exact merchant), use get_transactions instead. IMPORTANT: The query MUST be in English. Always translate the user's query to English before calling this tool (e.g., '寶可夢' -> 'Pokemon', '餐廳' -> 'restaurant dining').",
+                description: "Search transactions by meaning using semantic similarity. Use when user asks vague or conceptual questions about spending patterns, categories, or merchants in natural language. Supports any language (Chinese, English, etc.). For specific filters (date, amount, exact merchant), use get_transactions instead.",
                 parameters: [
                     "type": "object",
                     "properties": [
-                        "query": ["type": "string", "description": "Natural language search query in ENGLISH describing what to find. Translate from user's language if needed."],
+                        "query": ["type": "string", "description": "Natural language search query describing what to find (any language)"],
                         "limit": ["type": "integer", "description": "Max results to return (default 10)"]
                     ] as [String: Any],
                     "required": ["query"] as [String]
