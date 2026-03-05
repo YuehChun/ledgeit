@@ -348,4 +348,4 @@ The MCP server reads JSON-RPC requests from stdin and writes responses to stdout
 
 ## License
 
-Private project.
+[MIT License](LICENSE)
