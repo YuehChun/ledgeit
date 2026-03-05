@@ -288,7 +288,7 @@ struct PDFExtractor: Sendable {
             do {
                 return try JSONDecoder().decode(PDFFinancialData.self, from: data)
             } catch {
-                print("[PDFExtractor] Direct decode failed: \(error)")
+                print("[PDFExtractor] Direct decode failed")
             }
         }
 
@@ -300,7 +300,7 @@ struct PDFExtractor: Sendable {
                 do {
                     return try JSONDecoder().decode(PDFFinancialData.self, from: data)
                 } catch {
-                    print("[PDFExtractor] Extract-braces decode failed: \(error)")
+                    print("[PDFExtractor] Extract-braces decode failed")
                 }
             }
         }
@@ -333,7 +333,7 @@ struct PDFExtractor: Sendable {
 
                 if let data = attempt.data(using: .utf8),
                    let result = try? JSONDecoder().decode(PDFFinancialData.self, from: data) {
-                    print("[PDFExtractor] Recovered truncated JSON (used \(attempt.count)/\(truncated.count) chars)")
+                    print("[PDFExtractor] Recovered truncated JSON")
                     return result
                 }
             }

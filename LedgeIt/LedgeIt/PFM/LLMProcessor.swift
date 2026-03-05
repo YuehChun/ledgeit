@@ -425,7 +425,7 @@ struct LLMProcessor: Sendable {
                 do {
                     return try JSONDecoder().decode(T.self, from: data)
                 } catch {
-                    print("[LLMProcessor] JSON decode failed: \(error)")
+                    print("[LLMProcessor] JSON decode failed")
                 }
             }
         }

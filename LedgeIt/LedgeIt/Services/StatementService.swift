@@ -58,7 +58,7 @@ final class StatementService {
                 if hasText {
                     return (attempt, pw)
                 }
-                print("[StatementService] Password '\(pw.bankName)' unlocked PDF but no text extracted — skipping (false positive)")
+                print("[StatementService] Password unlocked PDF but no text extracted — skipping (false positive)")
             }
         }
         throw StatementError.noMatchingPassword

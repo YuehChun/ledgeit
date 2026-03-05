@@ -288,8 +288,7 @@ actor OpenRouterService {
         do {
             json = try JSONSerialization.jsonObject(with: data)
         } catch {
-            let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "non-utf8"
-            print("[OpenRouter] Failed to parse API response as JSON: \(bodyPreview)")
+            print("[OpenRouter] Failed to parse API response as JSON")
             throw OpenRouterError.invalidResponse
         }
 
@@ -301,10 +300,10 @@ actor OpenRouterService {
             // Check for error in response
             if let dict = json as? [String: Any], let error = dict["error"] as? [String: Any] {
                 let msg = error["message"] as? String ?? "Unknown API error"
-                print("[OpenRouter] API error: \(msg)")
+                print("[OpenRouter] API error occurred")
                 throw OpenRouterError.requestFailed(-1)
             }
-            print("[OpenRouter] Unexpected response structure: \(String(data: data.prefix(500), encoding: .utf8) ?? "")")
+            print("[OpenRouter] Unexpected response structure")
             throw OpenRouterError.invalidResponse
         }
 

@@ -46,6 +46,9 @@ token*.json
 oauth_client.json
 credentials.json
 
+# Docs (private planning & drafts)
+docs/
+
 # Logs
 *.log
 logs/

@@ -144,8 +144,7 @@ final class GoogleAuthService {
             throw GoogleAuthError.authFailed("Could not construct authorization URL.")
         }
 
-        print("[GoogleAuth] Authorization URL: \(authURL.absoluteString)")
-        print("[GoogleAuth] Client ID prefix: \(clientID.prefix(20))...")
+        // Only log that auth flow started, not the full URL or credentials
         NSWorkspace.shared.open(authURL)
 
         let code = try await server.waitForCode()
@@ -326,9 +325,15 @@ private final class LoopbackServer: @unchecked Sendable {
             </body></html>
             """
         } else {
+            let safeMessage = (errorMessage ?? "Authentication failed.")
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+                .replacingOccurrences(of: "'", with: "&#39;")
             html = """
             <!DOCTYPE html><html><body style="font-family:-apple-system,system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f7">
-            <div style="text-align:center"><h1 style="color:#ff3b30">&#10007; Error</h1><p style="color:#666">\(errorMessage ?? "Authentication failed.")</p></div>
+            <div style="text-align:center"><h1 style="color:#ff3b30">&#10007; Error</h1><p style="color:#666">\(safeMessage)</p></div>
             </body></html>
             """
         }

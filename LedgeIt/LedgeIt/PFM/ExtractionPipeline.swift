@@ -73,7 +73,7 @@ final class ExtractionPipeline {
                     do {
                         try await embeddingService.embedTransaction(transaction)
                     } catch {
-                        print("[EmbeddingService] Failed to embed transaction \(transaction.id ?? -1): \(error)")
+                        print("[EmbeddingService] Failed to embed transaction: \(error.localizedDescription)")
                     }
                 }
 

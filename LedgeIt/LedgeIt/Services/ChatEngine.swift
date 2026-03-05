@@ -1,19 +1,7 @@
 import Foundation
+import os.log
 
-private let chatLogFile: URL = {
-    let url = URL(fileURLWithPath: "/tmp/LedgeIt-chat.log")
-    FileManager.default.createFile(atPath: url.path, contents: nil)
-    return url
-}()
-
-private func chatLog(_ msg: String) {
-    let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(msg)\n"
-    if let handle = try? FileHandle(forWritingTo: chatLogFile) {
-        handle.seekToEndOfFile()
-        handle.write(line.data(using: .utf8)!)
-        handle.closeFile()
-    }
-}
+private let chatLogger = Logger(subsystem: "com.ledgeit.app", category: "ChatEngine")
 
 actor ChatEngine {
     private let queryService: FinancialQueryService
@@ -69,7 +57,7 @@ actor ChatEngine {
         continuation: AsyncStream<ChatStreamEvent>.Continuation
     ) async {
         do {
-            chatLog("User: \(message)")
+            chatLogger.debug("User: \(message)")
             // Ensure OpenRouterService is initialized
             let router = try getOrCreateOpenRouter()
 
@@ -131,10 +119,10 @@ actor ChatEngine {
 
                 // If no tool call, we are done
                 guard let tc = toolCall else {
-                    chatLog("No tool call in this iteration, done.")
+                    chatLogger.debug("No tool call in this iteration, done.")
                     break
                 }
-                chatLog("Tool call: \(tc.name)")
+                chatLogger.debug("Tool call: \(tc.name)")
 
                 // Execute tool call
                 continuation.yield(.toolCallStarted(tc.name))
@@ -359,7 +347,7 @@ actor ChatEngine {
     // MARK: - Tool Execution
 
     private func executeTool(name: String, arguments: String) async throws -> String {
-        chatLog("executeTool: name=\(name) args=\(arguments)")
+        chatLogger.debug("executeTool: name=\(name) args=\(arguments)")
         let args = parseArguments(arguments)
 
         switch name {
@@ -454,13 +442,13 @@ actor ChatEngine {
             } else {
                 limit = 10
             }
-            chatLog("semantic_search queries=\(queries) limit=\(limit)")
+            chatLogger.debug("semantic_search queries=\(queries) limit=\(limit)")
 
             // Run hybrid search for each query, merge with RRF
             var bestScores: [Int64: Float] = [:]
             for q in queries {
                 let results = try await embeddingService.hybridSearch(query: q, limit: limit)
-                chatLog("  query '\(q)': \(results.count) results")
+                chatLogger.debug("  query '\(q)': \(results.count) results")
                 for r in results {
                     // Keep best (most negative = highest RRF) score per transaction
                     if let existing = bestScores[r.transactionId] {
@@ -474,14 +462,14 @@ actor ChatEngine {
             // Sort by best score (most negative = best match)
             let sorted = bestScores.sorted { $0.value < $1.value }
             let topIds = sorted.prefix(limit).map { $0.key }
-            chatLog("merged \(bestScores.count) unique results, top \(topIds.count)")
+            chatLogger.debug("merged \(bestScores.count) unique results, top \(topIds.count)")
 
             if topIds.isEmpty {
                 return "No transactions found for: \(queries.joined(separator: ", "))"
             }
             let transactions = try await queryService.getTransactions(ids: Array(topIds))
             for t in transactions {
-                chatLog("  tx: \(t.merchant ?? "?") id=\(t.id ?? 0) amt=\(t.amount)")
+                chatLogger.debug("  tx: \(t.merchant ?? "?") id=\(t.id ?? 0) amt=\(t.amount)")
             }
             return formatTransactions(transactions)
 
