@@ -231,7 +231,7 @@ actor OpenRouterService {
         model: String,
         messages: [Message],
         temperature: Double = 0.1,
-        maxTokens: Int = 2000
+        maxTokens: Int? = nil
     ) async throws -> String {
         guard let url = URL(string: Self.baseURL) else {
             throw OpenRouterError.invalidResponse
@@ -243,9 +243,9 @@ actor OpenRouterService {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("https://ledgeit.app", forHTTPHeaderField: "HTTP-Referer")
         request.setValue("LedgeIt", forHTTPHeaderField: "X-Title")
-        request.timeoutInterval = 60
+        request.timeoutInterval = 180
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": messages.map { msg -> [String: Any] in
                 let contentValue: Any
@@ -262,9 +262,11 @@ actor OpenRouterService {
                 }
                 return ["role": msg.role, "content": contentValue]
             },
-            "temperature": temperature,
-            "max_tokens": maxTokens
+            "temperature": temperature
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -282,11 +284,27 @@ actor OpenRouterService {
             throw OpenRouterError.requestFailed(httpResponse.statusCode)
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
+        let json: Any
+        do {
+            json = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "non-utf8"
+            print("[OpenRouter] Failed to parse API response as JSON: \(bodyPreview)")
+            throw OpenRouterError.invalidResponse
+        }
+
+        guard let dict = json as? [String: Any],
+              let choices = dict["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            // Check for error in response
+            if let dict = json as? [String: Any], let error = dict["error"] as? [String: Any] {
+                let msg = error["message"] as? String ?? "Unknown API error"
+                print("[OpenRouter] API error: \(msg)")
+                throw OpenRouterError.requestFailed(-1)
+            }
+            print("[OpenRouter] Unexpected response structure: \(String(data: data.prefix(500), encoding: .utf8) ?? "")")
             throw OpenRouterError.invalidResponse
         }
 
@@ -300,7 +318,7 @@ actor OpenRouterService {
         messages: [Message],
         tools: [ToolDefinition] = [],
         temperature: Double = 0.3,
-        maxTokens: Int = 4000
+        maxTokens: Int? = nil
     ) -> AsyncStream<StreamEvent> {
         let rawMessages = messages.map { msg -> [String: Any] in
             let contentValue: Any
@@ -325,7 +343,7 @@ actor OpenRouterService {
         rawMessages: [[String: Any]],
         tools: [ToolDefinition] = [],
         temperature: Double = 0.3,
-        maxTokens: Int = 4000,
+        maxTokens: Int? = nil,
         apiKey: String,
         session: URLSession
     ) -> AsyncStream<StreamEvent> {
@@ -337,9 +355,11 @@ actor OpenRouterService {
             "model": model,
             "messages": rawMessages,
             "temperature": temperature,
-            "max_tokens": maxTokens,
             "stream": true
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
         if !tools.isEmpty {
             body["tools"] = tools.map { $0.toDict() }
         }

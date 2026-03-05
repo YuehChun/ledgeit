@@ -219,5 +219,107 @@ struct DatabaseMigrations {
                 t.column("created_at", .text).notNull()
             }
         }
+
+        // MARK: - v11: Smart deduplication support
+        migrator.registerMigration("v11") { db in
+            // Dedup audit log
+            try db.create(table: "dedup_log") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kept_transaction_id", .integer).notNull()
+                t.column("removed_transaction_id", .integer).notNull()
+                t.column("match_score", .double).notNull()
+                t.column("match_method", .text).notNull()
+                t.column("match_details", .text)
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(index: "idx_dedup_log_removed", on: "dedup_log", columns: ["removed_transaction_id"])
+
+            // Link duplicate to its original
+            try db.alter(table: "transactions") { t in
+                t.add(column: "is_duplicate_of", .integer)
+            }
+
+            // Bill reconciliation tracking
+            try db.alter(table: "credit_card_bills") { t in
+                t.add(column: "reconciliation_status", .text)
+                t.add(column: "reconciled_amount", .double)
+            }
+        }
+
+        // MARK: - v12: RAG embedding support
+        migrator.registerMigration("v12") { db in
+            try db.alter(table: "transactions") { t in
+                t.add(column: "embedding_version", .integer).defaults(to: 0)
+            }
+
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE transaction_embeddings USING vec0(
+                    embedding float[512]
+                )
+            """)
+        }
+        // MARK: - v13: Switch to multilingual embedding model (384-dim)
+        migrator.registerMigration("v13") { db in
+            // Drop old 512-dim embeddings (NLEmbedding English-only)
+            try db.execute(sql: "DROP TABLE IF EXISTS transaction_embeddings")
+
+            // Create new vec0 table with 384-dim (multilingual-e5-small)
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE transaction_embeddings USING vec0(
+                    embedding float[384]
+                )
+            """)
+
+            // Reset all embedding versions to force re-indexing
+            try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
+        }
+
+        // MARK: - v14: FTS5 for hybrid search + re-embed with E5 prefixes
+        migrator.registerMigration("v14") { db in
+            // FTS5 virtual table for keyword search on transactions
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE IF NOT EXISTS transactions_fts USING fts5(
+                    merchant,
+                    category,
+                    description,
+                    content='transactions',
+                    content_rowid='id'
+                )
+            """)
+
+            // Populate FTS5 from existing transactions
+            try db.execute(sql: """
+                INSERT INTO transactions_fts(rowid, merchant, category, description)
+                SELECT id, COALESCE(merchant, ''), COALESCE(category, ''), COALESCE(description, '')
+                FROM transactions
+                WHERE deleted_at IS NULL
+            """)
+
+            // Triggers to keep FTS5 in sync with transactions table
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON transactions BEGIN
+                    INSERT INTO transactions_fts(rowid, merchant, category, description)
+                    VALUES (NEW.id, COALESCE(NEW.merchant, ''), COALESCE(NEW.category, ''), COALESCE(NEW.description, ''));
+                END
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON transactions BEGIN
+                    INSERT INTO transactions_fts(transactions_fts, rowid, merchant, category, description)
+                    VALUES ('delete', OLD.id, COALESCE(OLD.merchant, ''), COALESCE(OLD.category, ''), COALESCE(OLD.description, ''));
+                END
+            """)
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON transactions BEGIN
+                    INSERT INTO transactions_fts(transactions_fts, rowid, merchant, category, description)
+                    VALUES ('delete', OLD.id, COALESCE(OLD.merchant, ''), COALESCE(OLD.category, ''), COALESCE(OLD.description, ''));
+                    INSERT INTO transactions_fts(rowid, merchant, category, description)
+                    VALUES (NEW.id, COALESCE(NEW.merchant, ''), COALESCE(NEW.category, ''), COALESCE(NEW.description, ''));
+                END
+            """)
+
+            // Re-embed all transactions with proper "passage:" prefix
+            try db.execute(sql: "DELETE FROM transaction_embeddings")
+            try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
+        }
     }
 }

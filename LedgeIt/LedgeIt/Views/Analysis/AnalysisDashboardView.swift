@@ -5,6 +5,7 @@ struct AnalysisDashboardView: View {
     @State private var report: ReportGenerator.FullReport?
     @State private var isGenerating = false
     @State private var progress = ""
+    @State private var generationStep = 0
     @State private var errorMessage: String?
     @AppStorage("appLanguage") private var appLanguage = "en"
     @AppStorage("advisorPersonaId") private var personaId = "moderate"
@@ -72,10 +73,12 @@ struct AnalysisDashboardView: View {
             }
             Spacer()
             if isGenerating {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(progress).font(.caption).foregroundStyle(.secondary)
-                }
+                AIProgressView(
+                    title: l10n.generateReport,
+                    steps: ["Loading data", "Analyzing trends", "Generating insights"],
+                    currentStep: generationStep
+                )
+                .frame(width: 240)
             } else {
                 Button { generateReport() } label: {
                     Label(report != nil ? l10n.refreshReport : l10n.generateReport, systemImage: "sparkles")
@@ -313,15 +316,19 @@ struct AnalysisDashboardView: View {
     private func generateReport() {
         isGenerating = true
         errorMessage = nil
+        generationStep = 0
         Task {
-            defer { isGenerating = false; progress = "" }
+            defer { isGenerating = false; progress = ""; generationStep = 0 }
             do {
+                generationStep = 0 // Loading data
                 let openRouter = try OpenRouterService()
                 let generator = ReportGenerator(database: AppDatabase.shared, openRouter: openRouter)
                 let calendar = Calendar.current
                 let now = Date()
                 let year = calendar.component(.year, from: now)
                 let month = calendar.component(.month, from: now)
+
+                generationStep = 1 // Analyzing trends
 
                 // Observe progress
                 let progressTask = Task { @MainActor in
@@ -332,6 +339,7 @@ struct AnalysisDashboardView: View {
                 }
 
                 report = try await generator.generateMonthlyReport(year: year, month: month, language: appLanguage, persona: persona)
+                generationStep = 2 // Generating insights
                 progressTask.cancel()
             } catch {
                 errorMessage = error.localizedDescription

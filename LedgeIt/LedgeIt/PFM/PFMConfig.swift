@@ -254,21 +254,30 @@ enum PFMConfig: Sendable {
 
     static let defaultClassificationModel = "anthropic/claude-haiku-4-5"
     static let defaultExtractionModel = "anthropic/claude-sonnet-4-6"
-    static let defaultStatementModel = "google/gemini-2.5-pro-preview"
+    static let defaultStatementModel = "google/gemini-2.5-pro"
 
     static var classificationModel: String {
         let saved = UserDefaults.standard.string(forKey: "llmClassificationModel") ?? ""
-        return saved.isEmpty ? defaultClassificationModel : saved
+        return saved.isEmpty ? defaultClassificationModel : migrateModelId(saved)
     }
 
     static var extractionModel: String {
         let saved = UserDefaults.standard.string(forKey: "llmExtractionModel") ?? ""
-        return saved.isEmpty ? defaultExtractionModel : saved
+        return saved.isEmpty ? defaultExtractionModel : migrateModelId(saved)
     }
 
     static var statementModel: String {
         let saved = UserDefaults.standard.string(forKey: "llmStatementModel") ?? ""
-        return saved.isEmpty ? defaultStatementModel : saved
+        return saved.isEmpty ? defaultStatementModel : migrateModelId(saved)
+    }
+
+    /// Migrate old model IDs to current ones
+    private static func migrateModelId(_ id: String) -> String {
+        switch id {
+        case "google/gemini-2.5-pro-preview": return "google/gemini-2.5-pro"
+        case "google/gemini-2.5-flash-preview": return "google/gemini-2.5-flash"
+        default: return id
+        }
     }
 
     static let visionModel = "anthropic/claude-sonnet-4-6"
@@ -278,8 +287,8 @@ enum PFMConfig: Sendable {
         ("anthropic/claude-haiku-4-5", "Claude Haiku 4.5 (Fast)"),
         ("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6"),
         ("anthropic/claude-opus-4-6", "Claude Opus 4.6"),
-        ("google/gemini-2.5-pro-preview", "Gemini 2.5 Pro"),
-        ("google/gemini-2.5-flash-preview", "Gemini 2.5 Flash"),
+        ("google/gemini-2.5-pro", "Gemini 2.5 Pro"),
+        ("google/gemini-2.5-flash", "Gemini 2.5 Flash"),
         ("openai/gpt-4.1", "GPT-4.1"),
         ("openai/gpt-4.1-mini", "GPT-4.1 Mini"),
     ]

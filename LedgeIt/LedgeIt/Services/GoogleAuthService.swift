@@ -40,10 +40,16 @@ final class GoogleAuthService {
     // MARK: - Sign In
 
     func signIn() async throws {
-        guard let clientID = KeychainService.load(key: .googleClientID),
-              let clientSecret = KeychainService.load(key: .googleClientSecret)
+        guard let clientID = KeychainService.load(key: .googleClientID)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let clientSecret = KeychainService.load(key: .googleClientSecret)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !clientID.isEmpty, !clientSecret.isEmpty
         else {
             throw GoogleAuthError.missingCredentials
+        }
+
+        // Validate client ID format: should end with .apps.googleusercontent.com
+        if !clientID.hasSuffix(".apps.googleusercontent.com") {
+            throw GoogleAuthError.authFailed("Invalid client ID format. Expected: <id>.apps.googleusercontent.com")
         }
 
         let (code, redirectURI) = try await startLoopbackAuthFlow(clientID: clientID)
@@ -138,6 +144,8 @@ final class GoogleAuthService {
             throw GoogleAuthError.authFailed("Could not construct authorization URL.")
         }
 
+        print("[GoogleAuth] Authorization URL: \(authURL.absoluteString)")
+        print("[GoogleAuth] Client ID prefix: \(clientID.prefix(20))...")
         NSWorkspace.shared.open(authURL)
 
         let code = try await server.waitForCode()

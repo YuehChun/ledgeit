@@ -12,6 +12,7 @@ struct AdvisorSettingsView: View {
     @State private var budgetValues: [String: Double] = [:]
     @State private var feedbackText = ""
     @State private var isOptimizing = false
+    @State private var optimizeStep = 0
     @State private var isApplying = false
     @State private var optimizedPreview: PromptOptimizer.OptimizedPrompt?
     @State private var versions: [PromptVersion] = []
@@ -133,11 +134,11 @@ struct AdvisorSettingsView: View {
                         )
 
                     if isOptimizing {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text(l10n.optimizing)
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                        AIProgressView(
+                            title: l10n.optimizing,
+                            steps: ["Processing feedback", "Adjusting parameters"],
+                            currentStep: optimizeStep
+                        )
                     } else {
                         Button {
                             optimizePrompt()
@@ -213,13 +214,11 @@ struct AdvisorSettingsView: View {
                         .font(.callout).foregroundStyle(.secondary)
 
                     if goalService.isGenerating {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text(l10n.generatingGoals)
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
+                        AIProgressView(
+                            title: l10n.generatingGoals,
+                            steps: ["Analyzing spending", "Creating goals", "Calculating targets"],
+                            currentStep: goalService.currentStep
+                        )
                     } else {
                         Button {
                             goalService.generateGoals(
@@ -302,15 +301,18 @@ struct AdvisorSettingsView: View {
         let feedback = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !feedback.isEmpty else { return }
         isOptimizing = true
+        optimizeStep = 0
         let persona = AdvisorPersona.resolveWithVersions(
             id: personaId, customSavingsTarget: customSavingsTarget, customRiskLevel: customRiskLevel
         )
         let language = appLanguage
         Task {
-            defer { isOptimizing = false }
+            defer { isOptimizing = false; optimizeStep = 0 }
             do {
+                optimizeStep = 0 // Processing feedback
                 let openRouter = try OpenRouterService()
                 let optimizer = PromptOptimizer(openRouter: openRouter)
+                optimizeStep = 1 // Adjusting parameters
                 optimizedPreview = try await optimizer.optimizePrompt(
                     currentPersona: persona, feedback: feedback, language: language
                 )

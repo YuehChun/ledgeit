@@ -33,6 +33,23 @@ struct PDFExtractor: Sendable {
             case statementPeriod = "statement_period"
             case amountType = "amount_type"
         }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            totalDue = Self.flexDouble(from: container, key: .totalDue)
+            minimumDue = Self.flexDouble(from: container, key: .minimumDue)
+            dueDate = try container.decodeIfPresent(String.self, forKey: .dueDate)
+            currency = try container.decodeIfPresent(String.self, forKey: .currency)
+            statementPeriod = try container.decodeIfPresent(String.self, forKey: .statementPeriod)
+            amountType = try container.decodeIfPresent(String.self, forKey: .amountType)
+        }
+
+        private static func flexDouble(from container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Double? {
+            if let val = try? container.decode(Double.self, forKey: key) { return val }
+            if let str = try? container.decode(String.self, forKey: key) { return Double(str) }
+            if let val = try? container.decode(Int.self, forKey: key) { return Double(val) }
+            return nil
+        }
     }
 
     /// Analyze PDF text content for structured financial data.
@@ -93,8 +110,7 @@ struct PDFExtractor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: PFMConfig.llmTemperature,
-            maxTokens: PFMConfig.llmMaxTokens
+            temperature: PFMConfig.llmTemperature
         )
 
         return try parseJSON(response)
@@ -114,12 +130,14 @@ struct PDFExtractor: Sendable {
         }
 
         // Layer 1: Classify — is this a payment notice or transaction detail?
+        // NOTE: Do not pass bankHint as a strong signal — it may be wrong due to PDFKit false positives.
+        // Let the LLM detect the issuer from actual document content.
         let classifyPrompt = """
         Analyze this credit card PDF document and classify it.
+        Detect the bank/issuer name from the document content itself — do NOT rely on external hints.
         Return ONLY valid JSON, no markdown.
 
         Filename: \(filename)
-        Bank hint: \(bankHint ?? "unknown")
 
         Document text (first 2000 chars):
         \(String(truncated.prefix(2000)))
@@ -127,7 +145,7 @@ struct PDFExtractor: Sendable {
         Return JSON:
         {
           "document_type": "transaction_detail" | "payment_notice" | "annual_summary" | "other",
-          "issuer": "bank name",
+          "issuer": "bank name (detected from document content)",
           "currency": "TWD or USD etc",
           "statement_period": "YYYY-MM if detectable",
           "confidence": 0.0-1.0
@@ -140,17 +158,20 @@ struct PDFExtractor: Sendable {
                 .system("You are a financial document classifier. Return ONLY valid JSON."),
                 .user(classifyPrompt)
             ],
-            temperature: 0.0,
-            maxTokens: 300
+            temperature: 0.0
         )
 
-        // Parse classification
+        // Parse classification — prefer LLM-detected issuer over password hint
         var detectedCurrency = "TWD"
-        var detectedIssuer = bankHint
+        var detectedIssuer: String? = nil
         if let data = cleanJSON(classifyResponse).data(using: .utf8),
            let info = try? JSONDecoder().decode(StatementClassification.self, from: data) {
             detectedCurrency = info.currency ?? "TWD"
-            if let issuer = info.issuer { detectedIssuer = issuer }
+            detectedIssuer = info.issuer
+        }
+        // Only fall back to bankHint if LLM couldn't detect the issuer
+        if detectedIssuer == nil || detectedIssuer?.isEmpty == true {
+            detectedIssuer = bankHint
         }
 
         // Layer 2: Full extraction with powerful model
@@ -223,8 +244,7 @@ struct PDFExtractor: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: 0.05,
-            maxTokens: 4000
+            temperature: 0.05
         )
 
         return try parseJSON(response)
@@ -260,21 +280,62 @@ struct PDFExtractor: Sendable {
         cleaned = cleaned.replacingOccurrences(of: "```", with: "")
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Fix trailing commas
+        cleaned = cleaned.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+
         if let data = cleaned.data(using: .utf8) {
             do {
                 return try JSONDecoder().decode(PDFFinancialData.self, from: data)
             } catch {
-                // Fall through to recovery
+                print("[PDFExtractor] Direct decode failed: \(error)")
             }
         }
 
+        // Extract JSON from first { to last }
         if let startRange = cleaned.range(of: "{"),
            let endRange = cleaned.range(of: "}", options: .backwards) {
-            var jsonStr = String(cleaned[startRange.lowerBound...endRange.upperBound])
-            jsonStr = jsonStr.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
-            jsonStr = jsonStr.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+            let jsonStr = String(cleaned[startRange.lowerBound...endRange.upperBound])
             if let data = jsonStr.data(using: .utf8) {
-                return try JSONDecoder().decode(PDFFinancialData.self, from: data)
+                do {
+                    return try JSONDecoder().decode(PDFFinancialData.self, from: data)
+                } catch {
+                    print("[PDFExtractor] Extract-braces decode failed: \(error)")
+                }
+            }
+        }
+
+        // Recovery for truncated JSON: find last complete transaction object, close brackets
+        if let startIdx = cleaned.firstIndex(of: "{") {
+            var truncated = String(cleaned[startIdx...])
+            // Find the last complete "}" that could end a transaction object
+            // Try progressively shorter substrings ending at each "}"
+            let braceIndices = truncated.indices.filter { truncated[$0] == "}" }
+            for braceIdx in braceIndices.reversed() {
+                var attempt = String(truncated[...braceIdx])
+                // Count unclosed brackets
+                var openBraces = 0
+                var openBrackets = 0
+                for ch in attempt {
+                    switch ch {
+                    case "{": openBraces += 1
+                    case "}": openBraces -= 1
+                    case "[": openBrackets += 1
+                    case "]": openBrackets -= 1
+                    default: break
+                    }
+                }
+                // Close any remaining open brackets
+                attempt += String(repeating: "]", count: max(0, openBrackets))
+                attempt += String(repeating: "}", count: max(0, openBraces))
+                attempt = attempt.replacingOccurrences(of: #",\s*\}"#, with: "}", options: .regularExpression)
+                attempt = attempt.replacingOccurrences(of: #",\s*\]"#, with: "]", options: .regularExpression)
+
+                if let data = attempt.data(using: .utf8),
+                   let result = try? JSONDecoder().decode(PDFFinancialData.self, from: data) {
+                    print("[PDFExtractor] Recovered truncated JSON (used \(attempt.count)/\(truncated.count) chars)")
+                    return result
+                }
             }
         }
 

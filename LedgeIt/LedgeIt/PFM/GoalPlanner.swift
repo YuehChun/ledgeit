@@ -51,9 +51,16 @@ struct GoalPlanner: Sendable {
             "[\($0.type)] \($0.title) - \($0.status)"
         }.joined(separator: "\n")
 
-        let languageInstruction = language == "zh-Hant"
-            ? "You MUST write ALL text values (title, description, reasoning) in Traditional Chinese (繁體中文). "
-            : ""
+        let languageName: String
+        let languageInstruction: String
+        switch language {
+        case "zh-Hant":
+            languageName = "Traditional Chinese (繁體中文)"
+            languageInstruction = "CRITICAL: You MUST write ALL text values (title, description, reasoning) in Traditional Chinese (繁體中文). Do NOT use English for any user-facing text. "
+        default:
+            languageName = "English"
+            languageInstruction = ""
+        }
 
         let personaPriority: String
         switch persona.id {
@@ -125,6 +132,7 @@ struct GoalPlanner: Sendable {
         - target_months: estimated time to achieve
         - Do NOT suggest goals that duplicate existing ones
         - Be specific: "Reduce dining spending to X/month" not "Spend less on food"
+        - LANGUAGE: All user-facing text (title, description, reasoning) MUST be written in \(languageName)
         """
 
         let response = try await openRouter.complete(
@@ -133,8 +141,7 @@ struct GoalPlanner: Sendable {
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: 0.3,
-            maxTokens: 2000
+            temperature: 0.3
         )
 
         return try parseJSON(response)

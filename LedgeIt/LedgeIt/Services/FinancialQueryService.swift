@@ -43,6 +43,16 @@ actor FinancialQueryService {
         }
     }
 
+    func getTransactions(ids: [Int64]) async throws -> [Transaction] {
+        guard !ids.isEmpty else { return [] }
+        return try await database.db.read { db in
+            try Transaction
+                .filter(ids.contains(Transaction.Columns.id))
+                .filter(Transaction.Columns.deletedAt == nil)
+                .fetchAll(db)
+        }
+    }
+
     func getTransactionSummary(period: DatePeriod) async throws -> SpendingSummary {
         try await database.db.read { db in
             let totalIncome = try Double.fetchOne(db, sql: """
@@ -154,12 +164,8 @@ actor FinancialQueryService {
 
     func getUpcomingPayments() async throws -> [CreditCardBill] {
         try await database.db.read { db in
-            let fmt = DateFormatter()
-            fmt.dateFormat = "yyyy-MM-dd"
-            let today = fmt.string(from: Date())
-
+            // Return ALL unpaid bills (including past-due) so users see overdue payments
             return try CreditCardBill
-                .filter(CreditCardBill.Columns.dueDate >= today)
                 .filter(CreditCardBill.Columns.isPaid == false)
                 .order(CreditCardBill.Columns.dueDate.asc)
                 .fetchAll(db)

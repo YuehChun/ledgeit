@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import Observation
+import CSQLiteVec
 
 @Observable
 final class AppDatabase: Sendable {
@@ -14,6 +15,18 @@ final class AppDatabase: Sendable {
         }
 
         db = try DatabaseQueue(path: path)
+
+        // Register sqlite-vec extension before running migrations
+        try db.write { db in
+            let rc = sqlite3_vec_init(db.sqliteConnection, nil, nil)
+            guard rc == 0 /* SQLITE_OK */ else {
+                throw NSError(
+                    domain: "AppDatabase",
+                    code: Int(rc),
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to initialize sqlite-vec: error code \(rc)"]
+                )
+            }
+        }
 
         var migrator = DatabaseMigrator()
         DatabaseMigrations.registerMigrations(&migrator)
