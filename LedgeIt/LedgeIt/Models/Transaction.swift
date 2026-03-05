@@ -21,6 +21,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
     var isReviewed: Bool = false
     var deletedAt: String?
     var isDuplicateOf: Int64?
+    var embeddingVersion: Int = 0
 
     static let databaseTableName = "transactions"
 
@@ -44,6 +45,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         static let isReviewed = Column(CodingKeys.isReviewed)
         static let deletedAt = Column(CodingKeys.deletedAt)
         static let isDuplicateOf = Column(CodingKeys.isDuplicateOf)
+        static let embeddingVersion = Column(CodingKeys.embeddingVersion)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -66,6 +68,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         case isReviewed = "is_reviewed"
         case deletedAt = "deleted_at"
         case isDuplicateOf = "is_duplicate_of"
+        case embeddingVersion = "embedding_version"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

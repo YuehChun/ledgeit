@@ -245,5 +245,18 @@ struct DatabaseMigrations {
                 t.add(column: "reconciled_amount", .double)
             }
         }
+
+        // MARK: - v12: RAG embedding support
+        migrator.registerMigration("v12") { db in
+            try db.alter(table: "transactions") { t in
+                t.add(column: "embedding_version", .integer).defaults(to: 0)
+            }
+
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE transaction_embeddings USING vec0(
+                    embedding float[512]
+                )
+            """)
+        }
     }
 }
