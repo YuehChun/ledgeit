@@ -2,14 +2,19 @@ import Foundation
 
 actor ChatEngine {
     private let queryService: FinancialQueryService
+    private let embeddingService: EmbeddingService
     private var openRouter: OpenRouterService?
     private var conversationHistory: [OpenRouterService.Message] = []
 
     private let model = "anthropic/claude-sonnet-4.5"
     private let maxToolIterations = 5
 
-    init(queryService: FinancialQueryService = FinancialQueryService()) {
+    init(
+        queryService: FinancialQueryService = FinancialQueryService(),
+        embeddingService: EmbeddingService = EmbeddingService()
+    ) {
         self.queryService = queryService
+        self.embeddingService = embeddingService
     }
 
     // MARK: - Public API
@@ -203,6 +208,11 @@ actor ChatEngine {
             - Be concise and helpful.
             - Format currency amounts with 2 decimal places.
             - Respond in the same language the user uses.
+
+            ## Tool Selection
+            - Use `semantic_search` when the user asks vague or conceptual questions (e.g., "where did I spend on entertainment?", "any unusual purchases?", "food-related expenses")
+            - Use `get_transactions` or `search_transactions` when the user specifies exact filters (date range, merchant name, amount)
+            - You can combine both: use semantic_search first to discover relevant transactions, then get_transactions for precise filtering
             """
     }
 
@@ -303,6 +313,18 @@ actor ChatEngine {
                     "properties": [:] as [String: Any],
                     "required": [] as [String]
                 ] as [String: Any]
+            ),
+            OpenRouterService.ToolDefinition(
+                name: "semantic_search",
+                description: "Search transactions by meaning using semantic similarity. Use when user asks vague or conceptual questions about spending patterns, categories, or merchants in natural language. For specific filters (date, amount, exact merchant), use get_transactions instead.",
+                parameters: [
+                    "type": "object",
+                    "properties": [
+                        "query": ["type": "string", "description": "Natural language search query describing what to find"],
+                        "limit": ["type": "integer", "description": "Max results to return (default 10)"]
+                    ] as [String: Any],
+                    "required": ["query"] as [String]
+                ] as [String: Any]
             )
         ]
     }
@@ -384,6 +406,26 @@ actor ChatEngine {
         case "get_account_overview":
             let overview = try await queryService.getAccountOverview()
             return encodeToJSON(overview)
+
+        case "semantic_search":
+            guard let query = args["query"] as? String else {
+                return "Error: query parameter is required"
+            }
+            let limit: Int
+            if let intVal = args["limit"] as? Int {
+                limit = intVal
+            } else if let doubleVal = args["limit"] as? Double {
+                limit = Int(doubleVal)
+            } else {
+                limit = 10
+            }
+            let results = try await embeddingService.search(query: query, limit: limit)
+            if results.isEmpty {
+                return "No semantically similar transactions found for: \(query)"
+            }
+            let ids = results.map { $0.transactionId }
+            let transactions = try await queryService.getTransactions(ids: ids)
+            return formatTransactions(transactions)
 
         default:
             return "Unknown tool: \(name)"
