@@ -14,6 +14,7 @@ final class ExtractionPipeline {
     private let pdfExtractor: PDFExtractor
     private let deduplicationService: DeduplicationService
     private let billReconciler: BillReconciler
+    private let embeddingService: EmbeddingService
 
     var isProcessing = false
     var processedCount = 0
@@ -27,6 +28,7 @@ final class ExtractionPipeline {
         self.pdfExtractor = PDFExtractor(llmProcessor: llmProcessor)
         self.deduplicationService = DeduplicationService(database: database)
         self.billReconciler = BillReconciler(database: database)
+        self.embeddingService = EmbeddingService()
     }
 
     // MARK: - Process All Unprocessed Emails
@@ -56,9 +58,22 @@ final class ExtractionPipeline {
                 let deduped = try await deduplicationService.deduplicate(transactions)
 
                 // Save transactions
-                try await database.db.write { [deduped] db in
-                    for txn in deduped {
+                let savedTransactions: [Transaction] = try await database.db.write { [deduped] db in
+                    var saved: [Transaction] = []
+                    for var txn in deduped {
                         try txn.insert(db)
+                        saved.append(txn)
+                    }
+                    return saved
+                }
+
+                // Embed each transaction (non-blocking, errors logged not thrown)
+                let embeddingService = self.embeddingService
+                for transaction in savedTransactions {
+                    do {
+                        try await embeddingService.embedTransaction(transaction)
+                    } catch {
+                        print("[EmbeddingService] Failed to embed transaction \(transaction.id ?? -1): \(error)")
                     }
                 }
 
