@@ -72,17 +72,17 @@ struct CalendarView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         calendarGrid
-                            .padding(16)
+                            .padding(20)
                     }
                 }
-                .frame(width: 340)
+                .frame(minWidth: 420, idealWidth: 480)
                 .background(.background)
 
                 Divider()
 
                 // Right: selected day transactions
                 selectedDayDetail
-                    .frame(maxWidth: .infinity)
+                    .frame(minWidth: 280, maxWidth: .infinity)
             }
         }
         .navigationTitle("Calendar")
@@ -151,23 +151,23 @@ struct CalendarView: View {
 
     private var calendarGrid: some View {
         let weeks = weeksInMonth(displayedMonth)
-        let cellSize: CGFloat = 42
+        let cellSize: CGFloat = 56
 
-        return VStack(spacing: 2) {
+        return VStack(spacing: 4) {
             // Weekday headers
-            HStack(spacing: 2) {
+            HStack(spacing: 4) {
                 ForEach(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], id: \.self) { day in
                     Text(day)
-                        .font(.caption)
+                        .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
-                        .frame(width: cellSize, height: 20)
+                        .frame(width: cellSize, height: 24)
                 }
             }
 
             // Day cells
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 2) {
+                HStack(spacing: 4) {
                     ForEach(0..<7, id: \.self) { index in
                         if index < week.count {
                             dayCell(week[index], size: cellSize)
@@ -192,20 +192,20 @@ struct CalendarView: View {
                 Button {
                     selectedDate = date
                 } label: {
-                    VStack(spacing: 2) {
+                    VStack(spacing: 3) {
                         Text("\(calendar.component(.day, from: date))")
-                            .font(.system(.body, design: .rounded))
+                            .font(.system(.title3, design: .rounded))
                             .fontWeight(isToday ? .bold : .regular)
                             .foregroundStyle(isSelected ? .white : isToday ? .blue : .primary)
 
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             if hasTxns {
                                 let txns = transactionsByDate[dateStr] ?? []
                                 let uniqueCats = Array(Set(txns.compactMap(\.category))).prefix(3)
                                 ForEach(Array(uniqueCats.enumerated()), id: \.offset) { _, cat in
                                     Circle()
                                         .fill(isSelected ? .white.opacity(0.8) : CategoryStyle.style(forRawCategory: cat).color)
-                                        .frame(width: 4, height: 4)
+                                        .frame(width: 6, height: 6)
                                 }
                             }
                             if let dayBills = billsByDate[dateStr], !dayBills.isEmpty {
@@ -218,11 +218,11 @@ struct CalendarView: View {
                                     return .orange
                                 }()
                                 Image(systemName: "creditcard.fill")
-                                    .font(.system(size: 5))
+                                    .font(.system(size: 8))
                                     .foregroundStyle(isSelected ? .white.opacity(0.8) : billColor)
                             }
                         }
-                        .frame(height: 4)
+                        .frame(height: 6)
 
                         if !hasTxns && billsByDate[dateStr] == nil {
                             Color.clear.frame(height: 0)
@@ -230,7 +230,7 @@ struct CalendarView: View {
                     }
                     .frame(width: size, height: size)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 10)
                             .fill(isSelected ? .blue : isToday ? .blue.opacity(0.08) : .clear)
                     )
                 }
@@ -249,7 +249,8 @@ struct CalendarView: View {
             // Date header
             HStack {
                 Text(shortDateFormatter.string(from: selectedDate))
-                    .font(.headline)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                 Spacer()
                 if !selectedDateTransactions.isEmpty {
                     let dayTotal = selectedDateTransactions.reduce(0.0) { sum, tx in
@@ -257,14 +258,14 @@ struct CalendarView: View {
                         return sum + sign * abs(tx.amount)
                     }
                     Text(String(format: "Net: %.0f", dayTotal))
-                        .font(.callout)
+                        .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundStyle(dayTotal >= 0 ? .green : .red)
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
             Divider()
 
@@ -325,41 +326,37 @@ struct CalendarView: View {
                         }
 
                         ForEach(selectedDateTransactions) { tx in
-                            HStack(spacing: 10) {
+                            HStack(spacing: 8) {
                                 if let cat = tx.category {
-                                    CategoryIcon(category: cat, size: 24)
+                                    CategoryIcon(category: cat, size: 20)
                                 } else {
                                     RoundedRectangle(cornerRadius: 2)
                                         .fill(tx.type?.lowercased() == "credit" ? .green : .red.opacity(0.6))
-                                        .frame(width: 3, height: 32)
+                                        .frame(width: 3, height: 24)
                                 }
 
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 1) {
                                     Text(tx.merchant ?? "Unknown")
-                                        .font(.callout)
+                                        .font(.caption)
                                         .fontWeight(.medium)
                                         .lineLimit(1)
                                     if let desc = tx.description, !desc.isEmpty {
                                         Text(desc)
-                                            .font(.caption)
+                                            .font(.caption2)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                     }
                                 }
 
-                                Spacer(minLength: 8)
-
-                                if let category = tx.category {
-                                    CategoryBadge(category: category)
-                                }
+                                Spacer(minLength: 4)
 
                                 AmountText(amount: tx.amount, currency: tx.currency, type: tx.type)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
 
                             Divider()
-                                .padding(.leading, 29)
+                                .padding(.leading, 24)
                         }
                     }
                 }
