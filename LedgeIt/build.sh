@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 APP_NAME="LedgeIt"
+VERSION="${1:-1.0.0}"
 BUILD_DIR=".build"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
@@ -21,7 +22,7 @@ mkdir -p "${CONTENTS}/Resources"
 cp "${BUILD_DIR}/arm64-apple-macosx/release/${APP_NAME}" "${CONTENTS}/MacOS/${APP_NAME}"
 
 # Create Info.plist
-cat > "${CONTENTS}/Info.plist" << 'PLIST'
+cat > "${CONTENTS}/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -35,9 +36,9 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <key>CFBundleDisplayName</key>
     <string>LedgeIt</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -69,10 +70,38 @@ fi
 
 echo ""
 echo "App bundle created: ${APP_BUNDLE}"
-echo "To run: open ${APP_BUNDLE}"
+
+# Create DMG
+DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+DMG_PATH="${BUILD_DIR}/${DMG_NAME}"
+DMG_TEMP="${BUILD_DIR}/dmg-staging"
+
+echo "Creating DMG..."
+rm -rf "${DMG_TEMP}" "${DMG_PATH}"
+mkdir -p "${DMG_TEMP}"
+
+# Copy app to staging
+cp -R "${APP_BUNDLE}" "${DMG_TEMP}/"
+
+# Create symlink to /Applications
+ln -s /Applications "${DMG_TEMP}/Applications"
+
+# Create DMG with hdiutil
+hdiutil create -volname "${APP_NAME}" \
+    -srcfolder "${DMG_TEMP}" \
+    -ov -format UDZO \
+    "${DMG_PATH}" 2>&1
+
+rm -rf "${DMG_TEMP}"
+
+echo ""
+echo "DMG created: ${DMG_PATH}"
+echo "To install: open ${DMG_PATH}"
 echo ""
 
-# Optionally open the app
-if [ "${1:-}" = "--run" ]; then
+# Optionally open the app or DMG
+if [ "${2:-}" = "--run" ]; then
     open "${APP_BUNDLE}"
+elif [ "${2:-}" = "--open-dmg" ]; then
+    open "${DMG_PATH}"
 fi
