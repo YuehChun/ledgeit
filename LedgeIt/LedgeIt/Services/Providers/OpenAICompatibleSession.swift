@@ -1,0 +1,407 @@
+import Foundation
+
+/// A generalized adapter for any OpenAI-compatible API endpoint.
+///
+/// Supports providers such as OpenAI, OpenRouter, Ollama, Groq, and any other
+/// service that implements the OpenAI chat completions API contract.
+///
+/// Usage:
+/// ```swift
+/// let session = OpenAICompatibleSession(
+///     baseURL: "https://api.openai.com/v1",
+///     apiKey: "sk-...",
+///     model: "gpt-4o",
+///     instructions: "You are a helpful assistant."
+/// )
+/// let reply = try await session.complete(messages: [.user("Hello")])
+/// ```
+actor OpenAICompatibleSession {
+
+    // MARK: - Types
+
+    struct Message: Codable, Sendable {
+        let role: String
+        let content: MessageContent
+
+        enum MessageContent: Codable, Sendable {
+            case text(String)
+            case parts([ContentPart])
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self {
+                case .text(let string):
+                    try container.encode(string)
+                case .parts(let parts):
+                    try container.encode(parts)
+                }
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let string = try? container.decode(String.self) {
+                    self = .text(string)
+                } else {
+                    self = .parts(try container.decode([ContentPart].self))
+                }
+            }
+        }
+
+        struct ContentPart: Codable, Sendable {
+            let type: String
+            let text: String?
+            let imageUrl: ImageURL?
+
+            enum CodingKeys: String, CodingKey {
+                case type
+                case text
+                case imageUrl = "image_url"
+            }
+
+            struct ImageURL: Codable, Sendable {
+                let url: String
+            }
+        }
+
+        static func system(_ text: String) -> Message {
+            Message(role: "system", content: .text(text))
+        }
+
+        static func user(_ text: String) -> Message {
+            Message(role: "user", content: .text(text))
+        }
+
+        static func userWithImage(text: String, imageBase64: String, mimeType: String = "image/png") -> Message {
+            Message(role: "user", content: .parts([
+                ContentPart(type: "text", text: text, imageUrl: nil),
+                ContentPart(type: "image_url", text: nil, imageUrl: .init(url: "data:\(mimeType);base64,\(imageBase64)"))
+            ]))
+        }
+
+        static func assistant(_ text: String) -> Message {
+            Message(role: "assistant", content: .text(text))
+        }
+    }
+
+    // MARK: - Tool Calling Types
+
+    struct ToolDefinition: @unchecked Sendable {
+        let name: String
+        let description: String
+        let parameters: [String: Any]
+
+        func toDict() -> [String: Any] {
+            [
+                "type": "function",
+                "function": [
+                    "name": name,
+                    "description": description,
+                    "parameters": parameters
+                ] as [String: Any]
+            ]
+        }
+    }
+
+    struct ToolCall: Sendable {
+        let id: String
+        let name: String
+        let arguments: String
+    }
+
+    enum StreamEvent: Sendable {
+        case text(String)
+        case toolCall(ToolCall)
+        case done
+        case error(String)
+    }
+
+    // MARK: - Errors
+
+    enum ProviderError: LocalizedError {
+        case missingAPIKey
+        case requestFailed(Int)
+        case invalidResponse
+        case rateLimited
+
+        var errorDescription: String? {
+            switch self {
+            case .missingAPIKey:
+                return "API key is required but was not provided"
+            case .requestFailed(let code):
+                return "Request failed with status \(code)"
+            case .invalidResponse:
+                return "Invalid response from provider"
+            case .rateLimited:
+                return "Rate limit exceeded"
+            }
+        }
+    }
+
+    // MARK: - Properties
+
+    let baseURL: String
+    let apiKey: String?
+    let model: String
+    let instructions: String
+    let session: URLSession
+
+    /// The full endpoint URL for chat completions, derived from `baseURL`.
+    private var completionsURL: String {
+        baseURL.hasSuffix("/")
+            ? baseURL + "chat/completions"
+            : baseURL + "/chat/completions"
+    }
+
+    // MARK: - Init
+
+    /// Creates a new session targeting an OpenAI-compatible API.
+    ///
+    /// - Parameters:
+    ///   - baseURL: The provider's base URL (e.g. `https://api.openai.com/v1`).
+    ///   - apiKey: Bearer token for authentication. Pass `nil` for providers
+    ///             that do not require one (e.g. local Ollama).
+    ///   - model: The model identifier to use for completions.
+    ///   - instructions: Optional system instructions prepended to every request.
+    init(
+        baseURL: String,
+        apiKey: String?,
+        model: String,
+        instructions: String = ""
+    ) {
+        self.baseURL = baseURL
+        self.apiKey = apiKey
+        self.model = model
+        self.instructions = instructions
+        self.session = URLSession.shared
+    }
+
+    // MARK: - Non-Streaming API
+
+    /// Sends a chat completion request and returns the full response text.
+    func complete(
+        messages: [Message],
+        temperature: Double = 0.1,
+        maxTokens: Int? = nil
+    ) async throws -> String {
+        guard let url = URL(string: completionsURL) else {
+            throw ProviderError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = 180
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": Self.serializeMessages(messages),
+            "temperature": temperature
+        ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ProviderError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 429 {
+            throw ProviderError.rateLimited
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw ProviderError.requestFailed(httpResponse.statusCode)
+        }
+
+        let json: Any
+        do {
+            json = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            print("[OpenAICompatibleSession] Failed to parse API response as JSON")
+            throw ProviderError.invalidResponse
+        }
+
+        guard let dict = json as? [String: Any],
+              let choices = dict["choices"] as? [[String: Any]],
+              let first = choices.first,
+              let message = first["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            if let dict = json as? [String: Any], let errorObj = dict["error"] as? [String: Any] {
+                let msg = errorObj["message"] as? String ?? "Unknown API error"
+                print("[OpenAICompatibleSession] API error: \(msg)")
+                throw ProviderError.requestFailed(-1)
+            }
+            print("[OpenAICompatibleSession] Unexpected response structure")
+            throw ProviderError.invalidResponse
+        }
+
+        return content
+    }
+
+    // MARK: - Streaming API
+
+    /// Sends a streaming chat completion request and returns an async stream of events.
+    func streamComplete(
+        messages: [Message],
+        tools: [ToolDefinition] = [],
+        temperature: Double = 0.3,
+        maxTokens: Int? = nil
+    ) -> AsyncStream<StreamEvent> {
+        let rawMessages = Self.serializeMessages(messages)
+        return Self.performStreamComplete(
+            completionsURL: completionsURL,
+            model: model,
+            rawMessages: rawMessages,
+            tools: tools,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            apiKey: self.apiKey,
+            session: self.session
+        )
+    }
+
+    // MARK: - Static Stream Implementation
+
+    nonisolated static func performStreamComplete(
+        completionsURL: String,
+        model: String,
+        rawMessages: [[String: Any]],
+        tools: [ToolDefinition] = [],
+        temperature: Double = 0.3,
+        maxTokens: Int? = nil,
+        apiKey: String?,
+        session: URLSession
+    ) -> AsyncStream<StreamEvent> {
+        guard let url = URL(string: completionsURL) else {
+            return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": rawMessages,
+            "temperature": temperature,
+            "stream": true
+        ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
+        if !tools.isEmpty {
+            body["tools"] = tools.map { $0.toDict() }
+        }
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            return AsyncStream { $0.yield(.error("Failed to serialize request")); $0.finish() }
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = 120
+        request.httpBody = httpBody
+
+        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
+
+        Task.detached {
+            do {
+                let (bytes, urlResponse) = try await session.bytes(for: request)
+
+                guard let httpResponse = urlResponse as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? 0
+                    var errorBody = ""
+                    for try await line in bytes.lines {
+                        errorBody += line
+                        if errorBody.count > 2000 { break }
+                    }
+                    continuation.yield(.error("HTTP \(code): \(errorBody)"))
+                    continuation.finish()
+                    return
+                }
+
+                var toolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+                for try await line in bytes.lines {
+                    guard line.hasPrefix("data: ") else { continue }
+                    let payload = String(line.dropFirst(6))
+
+                    if payload == "[DONE]" {
+                        for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
+                            if !tc.name.isEmpty {
+                                continuation.yield(.toolCall(ToolCall(
+                                    id: tc.id,
+                                    name: tc.name,
+                                    arguments: tc.arguments
+                                )))
+                            }
+                        }
+                        continuation.yield(.done)
+                        continuation.finish()
+                        return
+                    }
+
+                    guard let data = payload.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let choices = json["choices"] as? [[String: Any]],
+                          let delta = choices.first?["delta"] as? [String: Any] else {
+                        continue
+                    }
+
+                    if let content = delta["content"] as? String {
+                        continuation.yield(.text(content))
+                    }
+
+                    if let tcs = delta["tool_calls"] as? [[String: Any]] {
+                        for tc in tcs {
+                            let index = tc["index"] as? Int ?? 0
+                            var existing = toolCalls[index] ?? (id: "", name: "", arguments: "")
+                            if let id = tc["id"] as? String { existing.id = id }
+                            if let fn = tc["function"] as? [String: Any] {
+                                if let name = fn["name"] as? String { existing.name = name }
+                                if let args = fn["arguments"] as? String { existing.arguments += args }
+                            }
+                            toolCalls[index] = existing
+                        }
+                    }
+                }
+
+                continuation.finish()
+            } catch {
+                continuation.yield(.error(error.localizedDescription))
+                continuation.finish()
+            }
+        }
+
+        return stream
+    }
+
+    // MARK: - Helpers
+
+    /// Converts an array of `Message` values into raw dictionaries for JSON serialization.
+    private static func serializeMessages(_ messages: [Message]) -> [[String: Any]] {
+        messages.map { msg -> [String: Any] in
+            let contentValue: Any
+            switch msg.content {
+            case .text(let str):
+                contentValue = str
+            case .parts(let parts):
+                contentValue = parts.map { part -> [String: Any] in
+                    var dict: [String: Any] = ["type": part.type]
+                    if let text = part.text { dict["text"] = text }
+                    if let imageUrl = part.imageUrl { dict["image_url"] = ["url": imageUrl.url] }
+                    return dict
+                }
+            }
+            return ["role": msg.role, "content": contentValue]
+        }
+    }
+}
