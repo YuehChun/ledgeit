@@ -40,7 +40,7 @@ struct DeduplicationService: Sendable {
                 let insertedId = try await database.db.write { db -> Int64 in
                     var mutable = duplicateToInsert
                     try mutable.insert(db)
-                    return mutable.id!
+                    return mutable.id ?? db.lastInsertedRowID
                 }
                 // Log with real inserted ID
                 try await logMatch(
@@ -89,13 +89,15 @@ struct DeduplicationService: Sendable {
 
         if match.score >= Score.autoMatchThreshold {
             let details = scoreDetails(new: txn, existing: match.transaction)
-            return (match.transaction.id!, match.score, "rule_match", details)
+            guard let matchId = match.transaction.id else { return nil }
+            return (matchId, match.score, "rule_match", details)
         }
 
         // Score 50-80: LLM tiebreaker
         let llmResult = try await llmTiebreaker(new: txn, existing: match.transaction)
         if llmResult.isDuplicate {
-            return (match.transaction.id!, match.score, "llm_match", llmResult.reason)
+            guard let matchId = match.transaction.id else { return nil }
+            return (matchId, match.score, "llm_match", llmResult.reason)
         }
         return nil
     }
