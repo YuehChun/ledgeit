@@ -17,125 +17,15 @@ import Foundation
 /// ```
 actor OpenAICompatibleSession {
 
-    // MARK: - Types
+    // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
 
-    struct Message: Codable, Sendable {
-        let role: String
-        let content: MessageContent
-
-        enum MessageContent: Codable, Sendable {
-            case text(String)
-            case parts([ContentPart])
-
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.singleValueContainer()
-                switch self {
-                case .text(let string):
-                    try container.encode(string)
-                case .parts(let parts):
-                    try container.encode(parts)
-                }
-            }
-
-            init(from decoder: Decoder) throws {
-                let container = try decoder.singleValueContainer()
-                if let string = try? container.decode(String.self) {
-                    self = .text(string)
-                } else {
-                    self = .parts(try container.decode([ContentPart].self))
-                }
-            }
-        }
-
-        struct ContentPart: Codable, Sendable {
-            let type: String
-            let text: String?
-            let imageUrl: ImageURL?
-
-            enum CodingKeys: String, CodingKey {
-                case type
-                case text
-                case imageUrl = "image_url"
-            }
-
-            struct ImageURL: Codable, Sendable {
-                let url: String
-            }
-        }
-
-        static func system(_ text: String) -> Message {
-            Message(role: "system", content: .text(text))
-        }
-
-        static func user(_ text: String) -> Message {
-            Message(role: "user", content: .text(text))
-        }
-
-        static func userWithImage(text: String, imageBase64: String, mimeType: String = "image/png") -> Message {
-            Message(role: "user", content: .parts([
-                ContentPart(type: "text", text: text, imageUrl: nil),
-                ContentPart(type: "image_url", text: nil, imageUrl: .init(url: "data:\(mimeType);base64,\(imageBase64)"))
-            ]))
-        }
-
-        static func assistant(_ text: String) -> Message {
-            Message(role: "assistant", content: .text(text))
-        }
-    }
-
-    // MARK: - Tool Calling Types
-
-    struct ToolDefinition: @unchecked Sendable {
-        let name: String
-        let description: String
-        let parameters: [String: Any]
-
-        func toDict() -> [String: Any] {
-            [
-                "type": "function",
-                "function": [
-                    "name": name,
-                    "description": description,
-                    "parameters": parameters
-                ] as [String: Any]
-            ]
-        }
-    }
-
-    struct ToolCall: Sendable {
-        let id: String
-        let name: String
-        let arguments: String
-    }
-
-    enum StreamEvent: Sendable {
-        case text(String)
-        case toolCall(ToolCall)
-        case done
-        case error(String)
-    }
-
-    // MARK: - Errors
-
-    enum ProviderError: LocalizedError {
-        case missingAPIKey
-        case requestFailed(Int)
-        case invalidResponse
-        case rateLimited
-
-        var errorDescription: String? {
-            switch self {
-            case .missingAPIKey:
-                return "API key is required but was not provided"
-            case .requestFailed(let code):
-                return "Request failed with status \(code)"
-            case .invalidResponse:
-                return "Invalid response from provider"
-            case .rateLimited:
-                return "Rate limit exceeded"
-            }
-        }
-    }
+    typealias Message = LLMMessage
+    typealias MessageContent = LLMMessage.LLMMessageContent
+    typealias ContentPart = LLMContentPart
+    typealias ToolDefinition = LLMToolDefinition
+    typealias ToolCall = LLMToolCall
+    typealias StreamEvent = LLMStreamEvent
+    typealias ProviderError = LLMProviderError
 
     // MARK: - Properties
 

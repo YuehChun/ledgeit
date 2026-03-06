@@ -2,9 +2,8 @@ import Foundation
 
 /// An adapter for the Google Gemini (generative AI) API.
 ///
-/// Translates the shared `OpenAICompatibleSession.Message` types into the
-/// Gemini request/response format and handles both non-streaming and
-/// streaming completions.
+/// Translates the shared `LLMMessage` types into the Gemini request/response
+/// format and handles both non-streaming and streaming completions.
 ///
 /// Usage:
 /// ```swift
@@ -17,13 +16,13 @@ import Foundation
 /// ```
 actor GoogleSession {
 
-    // MARK: - Type Aliases (reuse types from OpenAICompatibleSession)
+    // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
 
-    typealias Message = OpenAICompatibleSession.Message
-    typealias ToolDefinition = OpenAICompatibleSession.ToolDefinition
-    typealias ToolCall = OpenAICompatibleSession.ToolCall
-    typealias StreamEvent = OpenAICompatibleSession.StreamEvent
-    typealias ProviderError = OpenAICompatibleSession.ProviderError
+    typealias Message = LLMMessage
+    typealias ToolDefinition = LLMToolDefinition
+    typealias ToolCall = LLMToolCall
+    typealias StreamEvent = LLMStreamEvent
+    typealias ProviderError = LLMProviderError
 
     // MARK: - Constants
 
