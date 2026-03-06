@@ -352,5 +352,7 @@ struct L10n: Sendable {
     var extractionModelDesc: String { s("Transaction extraction from emails", "從郵件擷取交易資料") }
     var statementModelLabel: String { s("Statement Parsing", "帳單解析") }
     var statementModelDesc: String { s("Credit card PDF parsing (needs strong reasoning)", "信用卡 PDF 解析（需要強推理能力）") }
+    var chatModelLabel: String { s("AI Chat", "AI 聊天") }
+    var chatModelDesc: String { s("Financial advisor chat with tool calling", "財務顧問聊天（含工具呼叫）") }
     var resetToDefaults: String { s("Reset to Defaults", "恢復預設") }
 }

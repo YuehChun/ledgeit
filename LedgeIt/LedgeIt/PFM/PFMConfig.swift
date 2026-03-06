@@ -255,6 +255,7 @@ enum PFMConfig: Sendable {
     static let defaultClassificationModel = "anthropic/claude-haiku-4-5"
     static let defaultExtractionModel = "anthropic/claude-sonnet-4-6"
     static let defaultStatementModel = "google/gemini-2.5-pro"
+    static let defaultChatModel = "anthropic/claude-sonnet-4-6"
 
     static var classificationModel: String {
         let saved = UserDefaults.standard.string(forKey: "llmClassificationModel") ?? ""
@@ -269,6 +270,11 @@ enum PFMConfig: Sendable {
     static var statementModel: String {
         let saved = UserDefaults.standard.string(forKey: "llmStatementModel") ?? ""
         return saved.isEmpty ? defaultStatementModel : migrateModelId(saved)
+    }
+
+    static var chatModel: String {
+        let saved = UserDefaults.standard.string(forKey: "llmChatModel") ?? ""
+        return saved.isEmpty ? defaultChatModel : migrateModelId(saved)
     }
 
     /// Migrate old model IDs to current ones

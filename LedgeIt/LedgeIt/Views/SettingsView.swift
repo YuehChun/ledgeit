@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("llmClassificationModel") private var classificationModel = ""
     @AppStorage("llmExtractionModel") private var extractionModel = ""
     @AppStorage("llmStatementModel") private var statementModel = ""
+    @AppStorage("llmChatModel") private var chatModel = ""
     private var l10n: L10n { L10n(appLanguage) }
 
     var onKeySaved: (() -> Void)?
@@ -157,12 +158,20 @@ struct SettingsView: View {
                                     defaultModel: PFMConfig.defaultStatementModel
                                 )
 
+                                ModelPicker(
+                                    label: l10n.chatModelLabel,
+                                    description: l10n.chatModelDesc,
+                                    selection: $chatModel,
+                                    defaultModel: PFMConfig.defaultChatModel
+                                )
+
                                 HStack {
                                     Spacer()
                                     Button(l10n.resetToDefaults) {
                                         classificationModel = ""
                                         extractionModel = ""
                                         statementModel = ""
+                                        chatModel = ""
                                     }
                                     .buttonStyle(.bordered).controlSize(.small)
                                 }

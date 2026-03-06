@@ -9,7 +9,7 @@ actor ChatEngine {
     private var openRouter: OpenRouterService?
     private var conversationHistory: [OpenRouterService.Message] = []
 
-    private let model = "anthropic/claude-sonnet-4.5"
+    private var model: String { PFMConfig.chatModel }
     private let maxToolIterations = 5
 
     init(
