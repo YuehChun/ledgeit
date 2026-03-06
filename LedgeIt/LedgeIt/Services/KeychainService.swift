@@ -14,6 +14,8 @@ enum KeychainService: Sendable {
         case googleClientSecret = "google_client_secret"
         case googleAccessToken = "google_access_token"
         case googleRefreshToken = "google_refresh_token"
+        case anthropicAPIKey = "anthropic_api_key"
+        case googleAIAPIKey = "google_ai_api_key"
     }
 
     /// Call once at app startup to load all Keychain entries with a single prompt.
@@ -230,6 +232,30 @@ enum KeychainService: Sendable {
                           userInfo: [NSLocalizedDescriptionKey: "Keychain save failed: \(status)"])
         }
         cache.setRaw(account: account, value: value)
+    }
+
+    static func deleteRaw(account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        cache.setRaw(account: account, value: "")
+    }
+
+    // MARK: - Per-Endpoint API Key Storage
+
+    static func saveEndpointAPIKey(endpointId: UUID, value: String) throws {
+        try saveRaw(account: "endpoint_\(endpointId.uuidString)", value: value)
+    }
+
+    static func loadEndpointAPIKey(endpointId: UUID) -> String? {
+        loadRaw(account: "endpoint_\(endpointId.uuidString)")
+    }
+
+    static func deleteEndpointAPIKey(endpointId: UUID) {
+        deleteRaw(account: "endpoint_\(endpointId.uuidString)")
     }
 }
 
