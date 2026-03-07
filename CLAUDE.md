@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**LedgeIt** — a native macOS app for personal finance management. Automatically extracts financial transactions from Gmail, classifies them with AI (via OpenRouter), and provides dashboards, AI advisory, goal tracking, and calendar integration.
+**LedgeIt** — a native macOS app for personal finance management. Automatically extracts financial transactions from Gmail, classifies them with AI (multi-provider: OpenAI-compatible, Anthropic, Google), and provides dashboards, AI advisory, goal tracking, and calendar integration.
 
 ## Commands
 
 ### Build & Run (from `LedgeIt/`)
+
 ```bash
 swift build              # build
 swift run                # run
@@ -26,7 +27,7 @@ SyncService ──► emails table (SQLite)
   ▼
 ExtractionPipeline
   ├── IntentClassifier (rule-based accept/reject/uncertain)
-  ├── LLMProcessor (AI classification + extraction via OpenRouter)
+  ├── LLMProcessor (AI classification + extraction via SessionFactory)
   ├── AutoCategorizer (merchant → category mapping)
   ├── TransferDetector (inter-account transfer identification)
   └── Deduplication (amount + currency + date)
@@ -42,19 +43,36 @@ credit_card_bills table ──► DashboardView (upcoming bills), CalendarView (
   │
   ▼
 FinancialQueryService (shared query layer)
-  ├──► ChatEngine + OpenRouter (streaming + tool calling) ──► ChatView
+  ├──► ChatEngine + SessionFactory (streaming + tool calling) ──► ChatView
   └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
+
+AI Provider Layer (SessionFactory)
+  ├── OpenAICompatibleSession (OpenAI, OpenRouter, Ollama, Groq, etc.)
+  ├── AnthropicSession (SwiftAgent built-in)
+  ├── GoogleSession (Gemini API)
+  └── AIProviderConfigStore (UserDefaults + Keychain)
 ```
 
 ## Code Conventions
 
 - **ALL code, comments, docstrings, prompts, variables, and error messages MUST be in English** — no Chinese characters in code files
-- Swift 6.0, SwiftUI, macOS 14+
+- Swift 6.2, SwiftUI, macOS 26+
 - Database: SQLite via GRDB 7.0
-- Secrets: macOS Keychain (OpenRouter API key, Google OAuth credentials)
-- LLM: OpenRouter API (Claude, GPT, etc.)
+- Secrets: macOS Keychain (API keys per provider, Google OAuth credentials)
+- LLM: Multi-provider via SessionFactory (OpenAI-compatible, Anthropic, Google Gemini)
 - Package Manager: Swift Package Manager
+
+## AI Provider Architecture
+
+- **SessionFactory** creates the right session based on `AIProviderConfiguration`
+- **OpenAICompatibleSession** — supports any OpenAI API-compatible endpoint (configurable base URL + optional API key)
+- **GoogleSession** — Google Gemini API adapter
+- **AnthropicSession** — SwiftAgent built-in (via OpenAI-compatible proxy for now)
+- **AIProviderConfigStore** — persists provider config in UserDefaults, API keys in Keychain
+- **LLMTypes.swift** — shared types: `LLMMessage`, `LLMToolDefinition`, `LLMToolCall`, `LLMStreamEvent`
+- Users can add multiple OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Groq, etc.)
+- Each use case (classification, extraction, statement, chat) can use a different provider + model
 
 ## Key Dependencies
 
-**Swift**: GRDB 7.0 (SQLite), OpenRouter API, Google OAuth 2.0, Gmail API, Google Calendar API
+**Swift**: GRDB 7.0 (SQLite), [SwiftAgent (AI session framework)](https://github.com/SwiftedMind/SwiftAgent), Google OAuth 2.0, Gmail API, Google Calendar API
