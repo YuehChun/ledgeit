@@ -14,7 +14,7 @@ import Foundation
 /// )
 /// let reply = try await session.complete(messages: [.user("Hello")])
 /// ```
-actor GoogleSession {
+actor GoogleSession: LLMSession {
 
     // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
 

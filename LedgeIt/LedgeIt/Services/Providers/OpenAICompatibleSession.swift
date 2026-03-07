@@ -15,7 +15,7 @@ import Foundation
 /// )
 /// let reply = try await session.complete(messages: [.user("Hello")])
 /// ```
-actor OpenAICompatibleSession {
+actor OpenAICompatibleSession: LLMSession {
 
     // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
 
@@ -307,7 +307,25 @@ actor OpenAICompatibleSession {
                     return dict
                 }
             }
-            return ["role": msg.role, "content": contentValue]
+            var dict: [String: Any] = ["role": msg.role, "content": contentValue]
+
+            // Tool calls (assistant messages)
+            if let toolCalls = msg.toolCalls, !toolCalls.isEmpty {
+                dict["tool_calls"] = toolCalls.map { tc -> [String: Any] in
+                    [
+                        "id": tc.id,
+                        "type": "function",
+                        "function": ["name": tc.name, "arguments": tc.arguments]
+                    ] as [String: Any]
+                }
+            }
+
+            // Tool call ID (tool result messages)
+            if let toolCallId = msg.toolCallId {
+                dict["tool_call_id"] = toolCallId
+            }
+
+            return dict
         }
     }
 }
