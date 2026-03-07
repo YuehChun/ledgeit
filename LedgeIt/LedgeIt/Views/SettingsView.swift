@@ -78,21 +78,7 @@ struct SettingsView: View {
                             }
                         }
 
-                        SettingsSection(title: l10n.openRouterAI, icon: "brain.fill", color: .purple) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                FieldGroup(label: l10n.apiKey) {
-                                    SecureField("sk-or-...", text: $openRouterKey)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
-                                }
-                                HStack(spacing: 4) {
-                                    Image(systemName: "info.circle")
-                                    Text(l10n.openRouterHint)
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            }
-                        }
+                        AIProviderSettingsView()
 
                         // OpenRouter Credit Usage card
                         if isFetchingCredits {
