@@ -48,7 +48,7 @@ FinancialQueryService (shared query layer)
 
 AI Provider Layer (SessionFactory)
   ├── OpenAICompatibleSession (OpenAI, OpenRouter, Ollama, Groq, etc.)
-  ├── AnthropicSession (SwiftAgent built-in)
+  ├── AnthropicSession (direct Anthropic API)
   ├── GoogleSession (Gemini API)
   └── AIProviderConfigStore (UserDefaults + Keychain)
 ```
@@ -56,7 +56,7 @@ AI Provider Layer (SessionFactory)
 ## Code Conventions
 
 - **ALL code, comments, docstrings, prompts, variables, and error messages MUST be in English** — no Chinese characters in code files
-- Swift 6.2, SwiftUI, macOS 26+
+- Swift 6.2, SwiftUI, macOS 15+
 - Database: SQLite via GRDB 7.0
 - Secrets: macOS Keychain (API keys per provider, Google OAuth credentials)
 - LLM: Multi-provider via SessionFactory (OpenAI-compatible, Anthropic, Google Gemini)
@@ -67,7 +67,8 @@ AI Provider Layer (SessionFactory)
 - **SessionFactory** creates the right session based on `AIProviderConfiguration`
 - **OpenAICompatibleSession** — supports any OpenAI API-compatible endpoint (configurable base URL + optional API key)
 - **GoogleSession** — Google Gemini API adapter
-- **AnthropicSession** — SwiftAgent built-in (via OpenAI-compatible proxy for now)
+- **AnthropicSession** — direct Anthropic Messages API adapter (`/v1/messages`)
+- **LLMSession** protocol — unified interface for all provider sessions (`complete`, `streamComplete`)
 - **AIProviderConfigStore** — persists provider config in UserDefaults, API keys in Keychain
 - **LLMTypes.swift** — shared types: `LLMMessage`, `LLMToolDefinition`, `LLMToolCall`, `LLMStreamEvent`
 - Users can add multiple OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Groq, etc.)
@@ -75,4 +76,4 @@ AI Provider Layer (SessionFactory)
 
 ## Key Dependencies
 
-**Swift**: GRDB 7.0 (SQLite), [SwiftAgent (AI session framework)](https://github.com/SwiftedMind/SwiftAgent), Google OAuth 2.0, Gmail API, Google Calendar API
+**Swift**: GRDB 7.0 (SQLite), swift-embeddings (ML embeddings), Google OAuth 2.0, Gmail API, Google Calendar API
