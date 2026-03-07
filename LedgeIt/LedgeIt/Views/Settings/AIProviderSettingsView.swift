@@ -10,6 +10,7 @@ struct AIProviderSettingsView: View {
     @State private var googleAIAPIKey: String = ""
     @State private var endpointAPIKeys: [UUID: String] = [:]
     @State private var saveMessage: String?
+    @State private var endpointToDelete: OpenAICompatibleEndpoint?
 
     init() {
         _config = State(initialValue: AIProviderConfigStore.load())
@@ -25,7 +26,7 @@ struct AIProviderSettingsView: View {
     // MARK: - Section 1: Provider Management
 
     private var providerManagementSection: some View {
-        AISettingsSection(title: "AI Providers", icon: "brain.head.profile", color: .purple) {
+        SettingsSection(title: "AI Providers", icon: "brain.head.profile", color: .purple) {
             VStack(alignment: .leading, spacing: 14) {
                 // OpenAI Compatible Endpoints
                 Text("OpenAI Compatible Endpoints")
@@ -103,6 +104,21 @@ struct AIProviderSettingsView: View {
                 }
             )
         }
+        .confirmationDialog(
+            "Delete endpoint?",
+            isPresented: Binding(
+                get: { endpointToDelete != nil },
+                set: { if !$0 { endpointToDelete = nil } }
+            ),
+            presenting: endpointToDelete
+        ) { endpoint in
+            Button("Delete \(endpoint.name)", role: .destructive) {
+                deleteEndpoint(endpoint)
+                endpointToDelete = nil
+            }
+        } message: { endpoint in
+            Text("This will remove \"\(endpoint.name)\" and reset any model assignments using it.")
+        }
     }
 
     // MARK: - Endpoint Card
@@ -139,10 +155,11 @@ struct AIProviderSettingsView: View {
                 .controlSize(.mini)
 
                 Button("Delete", role: .destructive) {
-                    deleteEndpoint(endpoint)
+                    endpointToDelete = endpoint
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+                .disabled(config.endpoints.count <= 1)
             }
             .padding(.top, 2)
         }
@@ -153,7 +170,7 @@ struct AIProviderSettingsView: View {
     }
 
     private func endpointStatusBadge(for endpoint: OpenAICompatibleEndpoint) -> some View {
-        let hasKey = endpointAPIKeys[endpoint.id] != nil && !(endpointAPIKeys[endpoint.id]?.isEmpty ?? true)
+        let hasKey = endpointAPIKeys[endpoint.id].map { !$0.isEmpty } ?? false
         let status: (String, Color)
         if !endpoint.requiresAPIKey {
             status = ("no key needed", .green)
@@ -212,7 +229,7 @@ struct AIProviderSettingsView: View {
     // MARK: - Section 2: Model Assignment
 
     private var modelAssignmentSection: some View {
-        AISettingsSection(title: "Model Assignment", icon: "cpu", color: .blue) {
+        SettingsSection(title: "Model Assignment", icon: "cpu", color: .blue) {
             VStack(alignment: .leading, spacing: 14) {
                 modelAssignmentRow(
                     label: "Classification",
@@ -299,11 +316,11 @@ struct AIProviderSettingsView: View {
                         get: { config[keyPath: keyPath].model },
                         set: { newModel in
                             config[keyPath: keyPath].model = newModel
-                            saveConfig()
                         }
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.callout)
+                    .onSubmit { saveConfig() }
                 }
             }
         }
@@ -395,6 +412,7 @@ struct AIProviderSettingsView: View {
     // MARK: - Actions
 
     private func deleteEndpoint(_ endpoint: OpenAICompatibleEndpoint) {
+        guard config.endpoints.count > 1 else { return }
         config.endpoints.removeAll { $0.id == endpoint.id }
         KeychainService.deleteEndpointAPIKey(endpointId: endpoint.id)
         endpointAPIKeys.removeValue(forKey: endpoint.id)
@@ -434,30 +452,6 @@ struct AIProviderSettingsView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation { saveMessage = nil }
         }
-    }
-}
-
-// MARK: - Settings Section (matching SettingsView style)
-
-struct AISettingsSection<Content: View>: View {
-    let title: String
-    let icon: String
-    let color: Color
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(color)
-
-            content
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 

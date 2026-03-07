@@ -456,7 +456,7 @@ struct SettingsView: View {
 
 // MARK: - Reusable Components
 
-private struct SettingsSection<Content: View>: View {
+struct SettingsSection<Content: View>: View {
     let title: String
     let icon: String
     let color: Color
