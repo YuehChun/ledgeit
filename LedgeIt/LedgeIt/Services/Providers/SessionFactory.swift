@@ -1,4 +1,5 @@
 import Foundation
+import AnyLanguageModel
 
 enum SessionFactory {
 
@@ -19,13 +20,71 @@ enum SessionFactory {
         }
     }
 
-    /// Create a session for completions based on the model assignment.
-    ///
-    /// Returns the appropriate session type for the configured provider:
-    /// - `.openAICompatible` → `OpenAICompatibleSession` (OpenAI, OpenRouter, Ollama, Groq)
-    /// - `.anthropic` → `AnthropicSession` (direct Anthropic API)
-    /// - `.google` → `GoogleSession` (Google Gemini API)
+    // MARK: - New AnyLanguageModel API
+
+    /// Create a `LanguageModelSession` for the given assignment, with optional tools and instructions.
     static func makeSession(
+        assignment: ModelAssignment,
+        config: AIProviderConfiguration,
+        tools: [any Tool] = [],
+        instructions: String = ""
+    ) throws -> LanguageModelSession {
+        let model = try makeModel(assignment: assignment, config: config)
+        return LanguageModelSession(model: model, tools: tools, instructions: instructions)
+    }
+
+    /// Create a bare `LanguageModel` (no session/transcript) for the given assignment.
+    ///
+    /// Use this when you need to construct a `LanguageModelSession` yourself
+    /// (e.g. with a pre-existing `Transcript`).
+    static func makeModel(
+        assignment: ModelAssignment,
+        config: AIProviderConfiguration
+    ) throws -> any LanguageModel {
+        switch assignment.provider {
+        case .openAICompatible:
+            guard let endpointId = assignment.endpointId else {
+                throw SessionError.missingEndpointId(provider: assignment.provider)
+            }
+            guard let endpoint = config.endpoints.first(where: { $0.id == endpointId }) else {
+                throw SessionError.endpointNotFound(endpointId)
+            }
+            let apiKey = endpoint.requiresAPIKey
+                ? KeychainService.loadEndpointAPIKey(endpointId: endpoint.id)
+                : nil
+            if endpoint.requiresAPIKey && apiKey == nil {
+                throw SessionError.missingAPIKey(provider: endpoint.name)
+            }
+            return OpenAILanguageModel(
+                baseURL: URL(string: endpoint.baseURL)!,
+                apiKey: apiKey ?? "",
+                model: assignment.model,
+                apiVariant: .chatCompletions
+            )
+
+        case .anthropic:
+            guard let apiKey = KeychainService.load(key: .anthropicAPIKey) else {
+                throw SessionError.missingAPIKey(provider: "Anthropic")
+            }
+            return AnthropicLanguageModel(apiKey: apiKey, model: assignment.model)
+
+        case .google:
+            guard let apiKey = KeychainService.load(key: .googleAIAPIKey) else {
+                throw SessionError.missingAPIKey(provider: "Google AI")
+            }
+            return GeminiLanguageModel(apiKey: apiKey, model: assignment.model)
+        }
+    }
+
+    // MARK: - Legacy API (deprecated, will be removed in Phase 4 cleanup)
+
+    /// Create a session using the old `LLMSession` protocol.
+    ///
+    /// - Important: This method is kept temporarily for non-migrated call sites
+    ///   (LLMProcessor, PDFExtractor, etc.). It will be removed once all callers
+    ///   are migrated to the AnyLanguageModel-based API.
+    @available(*, deprecated, message: "Use makeSession(assignment:config:tools:instructions:) returning LanguageModelSession instead")
+    static func makeLegacySession(
         assignment: ModelAssignment,
         config: AIProviderConfiguration,
         instructions: String = ""

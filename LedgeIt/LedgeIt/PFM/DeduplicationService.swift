@@ -253,7 +253,7 @@ struct DeduplicationService: Sendable {
 
     private func llmTiebreaker(new: Transaction, existing: Transaction) async throws -> LLMResult {
         let providerConfig = AIProviderConfigStore.load()
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )

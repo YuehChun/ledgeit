@@ -76,7 +76,7 @@ struct PromptOptimizer: Sendable {
         - If feedback mentions specific categories, adjust that category's budget hint
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )

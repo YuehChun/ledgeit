@@ -135,7 +135,7 @@ struct GoalPlanner: Sendable {
         - LANGUAGE: All user-facing text (title, description, reasoning) MUST be written in \(languageName)
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )

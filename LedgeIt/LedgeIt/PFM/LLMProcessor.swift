@@ -151,7 +151,7 @@ struct LLMProcessor: Sendable {
         - "document_type": classify as one of: receipt, invoice, statement, notification, confirmation, subscription, other
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.classification,
             config: providerConfig
         )
@@ -314,7 +314,7 @@ struct LLMProcessor: Sendable {
         - If you cannot find a due date, return null for due_date
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )
@@ -393,7 +393,7 @@ struct LLMProcessor: Sendable {
         }
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.classification,
             config: providerConfig
         )
@@ -422,7 +422,7 @@ struct LLMProcessor: Sendable {
             imageBase64: base64
         )
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )

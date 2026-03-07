@@ -114,7 +114,7 @@ struct FinancialAdvisor: Sendable {
         - LANGUAGE: All user-facing text MUST be written in \(languageName)
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )

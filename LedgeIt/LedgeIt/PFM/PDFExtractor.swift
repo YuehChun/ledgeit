@@ -104,7 +104,7 @@ struct PDFExtractor: Sendable {
         - If no transactions found, return empty transactions array
         """
 
-        let session = try SessionFactory.makeSession(
+        let session = try SessionFactory.makeLegacySession(
             assignment: llmProcessor.providerConfig.extraction,
             config: llmProcessor.providerConfig
         )
@@ -155,7 +155,7 @@ struct PDFExtractor: Sendable {
         }
         """
 
-        let classifySession = try SessionFactory.makeSession(
+        let classifySession = try SessionFactory.makeLegacySession(
             assignment: llmProcessor.providerConfig.classification,
             config: llmProcessor.providerConfig
         )
@@ -244,7 +244,7 @@ struct PDFExtractor: Sendable {
         - If payment info is not found, set payment_summary to null
         """
 
-        let statementSession = try SessionFactory.makeSession(
+        let statementSession = try SessionFactory.makeLegacySession(
             assignment: llmProcessor.providerConfig.statement,
             config: llmProcessor.providerConfig
         )
