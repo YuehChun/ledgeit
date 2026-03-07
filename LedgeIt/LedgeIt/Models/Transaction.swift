@@ -22,6 +22,9 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
     var deletedAt: String?
     var isDuplicateOf: Int64?
     var embeddingVersion: Int = 0
+    var userCorrectedType: String?
+    var userCorrectedCategory: String?
+    var extractionConfidence: Double?
 
     static let databaseTableName = "transactions"
 
@@ -46,6 +49,9 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         static let deletedAt = Column(CodingKeys.deletedAt)
         static let isDuplicateOf = Column(CodingKeys.isDuplicateOf)
         static let embeddingVersion = Column(CodingKeys.embeddingVersion)
+        static let userCorrectedType = Column(CodingKeys.userCorrectedType)
+        static let userCorrectedCategory = Column(CodingKeys.userCorrectedCategory)
+        static let extractionConfidence = Column(CodingKeys.extractionConfidence)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -69,6 +75,9 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, Identifiable, H
         case deletedAt = "deleted_at"
         case isDuplicateOf = "is_duplicate_of"
         case embeddingVersion = "embedding_version"
+        case userCorrectedType = "user_corrected_type"
+        case userCorrectedCategory = "user_corrected_category"
+        case extractionConfidence = "extraction_confidence"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

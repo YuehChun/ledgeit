@@ -11,10 +11,10 @@ final class ExtractionPipeline {
     let database: AppDatabase
     let llmProcessor: LLMProcessor
     private let intentClassifier = IntentClassifier()
-    private let pdfExtractor: PDFExtractor
     private let deduplicationService: DeduplicationService
     private let billReconciler: BillReconciler
     private let embeddingService: EmbeddingService
+    private let fewShotProvider: FewShotProvider
 
     var isProcessing = false
     var processedCount = 0
@@ -25,10 +25,10 @@ final class ExtractionPipeline {
     init(database: AppDatabase, llmProcessor: LLMProcessor) {
         self.database = database
         self.llmProcessor = llmProcessor
-        self.pdfExtractor = PDFExtractor(llmProcessor: llmProcessor)
         self.deduplicationService = DeduplicationService(database: database)
         self.billReconciler = BillReconciler(database: database)
         self.embeddingService = EmbeddingService()
+        self.fewShotProvider = FewShotProvider(database: database)
     }
 
     // MARK: - Process All Unprocessed Emails
@@ -135,43 +135,6 @@ final class ExtractionPipeline {
             return texts.isEmpty ? nil : texts.joined(separator: "\n---\n")
         }
 
-        // Extract structured financial data from PDF attachments
-        let pdfTransactions: [Transaction] = await {
-            guard let text = attachmentText, !text.isEmpty else { return [] }
-            do {
-                guard let pdfData = try await pdfExtractor.extractFinancialData(
-                    pdfText: text,
-                    emailSubject: subject,
-                    emailSender: sender
-                ) else { return [] }
-
-                let now = ISO8601DateFormatter().string(from: Date())
-                return pdfData.transactions.compactMap { extracted -> Transaction? in
-                    guard let amount = extracted.amount else { return nil }
-                    let category = AutoCategorizer.categorize(
-                        merchant: extracted.merchant,
-                        description: extracted.description,
-                        docType: pdfData.documentType,
-                        amount: amount
-                    )
-                    return Transaction(
-                        emailId: email.id,
-                        amount: amount,
-                        currency: extracted.currency ?? "USD",
-                        merchant: extracted.merchant,
-                        category: category.rawValue,
-                        subcategory: category.dimension,
-                        transactionDate: extracted.date,
-                        description: extracted.description,
-                        type: extracted.type,
-                        createdAt: now
-                    )
-                }
-            } catch {
-                return []
-            }
-        }()
-
         // Extract sender email from "Name <email>" format
         let senderEmail = extractEmail(from: sender)
 
@@ -269,34 +232,54 @@ final class ExtractionPipeline {
             return ([], true)  // Financial but no individual transactions
         }
 
-        // Step D-2: Extract transactions via LLM
+        // Step D-2: Fetch few-shot examples from user corrections
+        let fewShotExamples = try? await fewShotProvider.fetchFewShotExamples()
+
+        // Step D-3: Extract transactions via LLM
         let extractionResult = try await llmProcessor.extractTransactions(
             subject: subject,
             body: fullText,
             sender: sender,
-            attachmentText: attachmentText
+            attachmentText: attachmentText,
+            fewShotExamples: fewShotExamples
         )
 
-        // Step E: Build Transaction records with categorization and transfer detection
+        // Step E: Validate extracted transactions
+        let emailDate: String? = {
+            guard let dateStr = email.date else { return nil }
+            let prefix = String(dateStr.prefix(10))
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            return fmt.date(from: prefix) != nil ? prefix : nil
+        }()
+
+        let validated = ExtractionValidator.validate(
+            extractionResult.transactions,
+            emailDate: emailDate
+        )
+
+        // Step F: Build Transaction records with categorization and transfer detection
         let now = ISO8601DateFormatter().string(from: Date())
         var transactions: [Transaction] = []
 
-        for extracted in extractionResult.transactions {
-            guard let amount = extracted.amount else { continue }
+        for validatedTx in validated {
+            let extracted = validatedTx.transaction
+            let amount = validatedTx.correctedAmount
 
             // Auto-categorize
             let category = AutoCategorizer.categorize(
                 merchant: extracted.merchant,
                 description: extracted.description,
                 docType: extractionResult.documentType,
-                amount: amount
+                amount: amount,
+                type: validatedTx.correctedType
             )
 
             // Transfer detection if type is "transfer"
             var transferType: String?
             var transferMetadataJSON: String?
 
-            if extracted.type?.lowercased() == "transfer" {
+            if validatedTx.correctedType?.lowercased() == "transfer" {
                 let combinedText = "\(subject) \(body)"
                 let result = TransferDetector.detectTransfer(in: combinedText, amount: amount)
                 if result.isTransfer {
@@ -327,25 +310,25 @@ final class ExtractionPipeline {
                 emailId: email.id,
                 attachmentId: nil,
                 amount: amount,
-                currency: extracted.currency ?? "USD",
+                currency: validatedTx.correctedCurrency,
                 merchant: extracted.merchant,
                 category: category.rawValue,
                 subcategory: category.dimension,
-                transactionDate: extracted.date,
+                transactionDate: validatedTx.correctedDate,
                 description: extracted.description,
-                type: extracted.type,
+                type: validatedTx.correctedType,
                 transferType: transferType,
                 transferMetadata: transferMetadataJSON,
                 confidence: Double(classification.confidence),
                 rawExtraction: rawJSON,
-                createdAt: now
+                createdAt: now,
+                extractionConfidence: extracted.confidence
             )
 
             transactions.append(transaction)
         }
 
-        let allTransactions = transactions + pdfTransactions
-        return (allTransactions, !allTransactions.isEmpty)
+        return (transactions, !transactions.isEmpty)
     }
 
     // MARK: - Calendar Sync

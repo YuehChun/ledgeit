@@ -321,5 +321,13 @@ struct DatabaseMigrations {
             try db.execute(sql: "DELETE FROM transaction_embeddings")
             try db.execute(sql: "UPDATE transactions SET embedding_version = 0")
         }
+        // MARK: - v15: User correction and extraction confidence
+        migrator.registerMigration("v15") { db in
+            try db.alter(table: "transactions") { t in
+                t.add(column: "user_corrected_type", .text)
+                t.add(column: "user_corrected_category", .text)
+                t.add(column: "extraction_confidence", .double)
+            }
+        }
     }
 }

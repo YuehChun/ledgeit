@@ -10,6 +10,7 @@ struct LLMProcessor: Sendable {
         let marketingProbability: Int
         let riskScore: Int
         let documentType: String
+        let hasAttachmentWithFinancialData: Bool?
         let reasoning: String
 
         enum CodingKeys: String, CodingKey {
@@ -18,6 +19,7 @@ struct LLMProcessor: Sendable {
             case marketingProbability = "marketing_probability"
             case riskScore = "risk_score"
             case documentType = "document_type"
+            case hasAttachmentWithFinancialData = "has_attachment_with_financial_data"
             case reasoning
         }
     }
@@ -42,10 +44,12 @@ struct LLMProcessor: Sendable {
         let date: String?
         let type: String?       // debit / credit / transfer
         let categoryHint: String?
+        let confidence: Double?
 
         enum CodingKeys: String, CodingKey {
             case amount, currency, merchant, description, date, type
             case categoryHint = "category_hint"
+            case confidence
         }
 
         init(from decoder: Decoder) throws {
@@ -57,6 +61,7 @@ struct LLMProcessor: Sendable {
             date = try container.decodeIfPresent(String.self, forKey: .date)
             type = try container.decodeIfPresent(String.self, forKey: .type)
             categoryHint = try container.decodeIfPresent(String.self, forKey: .categoryHint)
+            confidence = Self.decodeFlexibleDouble(from: container, key: .confidence)
         }
 
         private static func decodeFlexibleDouble(from container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Double? {
@@ -136,9 +141,14 @@ struct LLMProcessor: Sendable {
           "transaction_intent": 0-10,
           "marketing_probability": 0-10,
           "risk_score": 0-10,
-          "document_type": "statement|receipt|order|payment|transaction|other",
+          "document_type": "receipt|invoice|statement|notification|confirmation|subscription|other",
+          "has_attachment_with_financial_data": true/false,
           "reasoning": "brief explanation"
         }
+
+        Notes:
+        - "has_attachment_with_financial_data": true if the email mentions or contains PDF statements, invoices, or receipts as attachments
+        - "document_type": classify as one of: receipt, invoice, statement, notification, confirmation, subscription, other
         """
 
         let response = try await openRouter.complete(
@@ -159,7 +169,8 @@ struct LLMProcessor: Sendable {
         subject: String,
         body: String,
         sender: String,
-        attachmentText: String? = nil
+        attachmentText: String? = nil,
+        fewShotExamples: String? = nil
     ) async throws -> ExtractionResult {
         let truncatedBody = String(body.prefix(6000))
 
@@ -176,7 +187,7 @@ struct LLMProcessor: Sendable {
         Return ONLY valid JSON with no markdown formatting.
         """
 
-        let userPrompt = """
+        var userPrompt = """
         Extract all financial transactions from this email.
 
         Subject: \(subject)
@@ -188,12 +199,13 @@ struct LLMProcessor: Sendable {
           "transactions": [
             {
               "amount": 123.45,
-              "currency": "AED",
+              "currency": "TWD",
               "merchant": "Store Name",
               "description": "Brief description",
               "date": "YYYY-MM-DD",
               "type": "debit|credit|transfer",
-              "category_hint": "optional category hint"
+              "category_hint": "optional category hint",
+              "confidence": 0.95
             }
           ],
           "bank_info": {
@@ -203,20 +215,45 @@ struct LLMProcessor: Sendable {
           "document_type": "statement|receipt|order|payment|transaction"
         }
 
-        Rules:
+        TRANSACTION TYPE RULES (critical):
+        - "debit": Money LEAVING the user's account (purchases, payments, fees, subscriptions, bills)
+        - "credit": Money ENTERING the user's account (salary, refunds, cashback, interest earned, reimbursements)
+        - "transfer": Money moving between the user's OWN accounts
+
+        KEY SIGNALS for determining type:
+        - "charged", "paid", "debited", "purchased", "payment for" -> debit
+        - "credited", "refund", "cashback", "salary", "received", "reimbursement", "deposit" -> credit
+        - "transfer to own account", "between accounts" -> transfer
+        - Credit card transactions are ALWAYS "debit" (user spent money)
+        - Bill payments (electricity, water, telecom, rent) are "debit"
+        - Subscription charges (Netflix, Spotify, iCloud) are "debit"
+        - If ambiguous, default to "debit"
+
+        FEW-SHOT EXAMPLES:
+        1. "Your salary has been credited" -> type: "credit", confidence: 0.95
+        2. "Refund of AED 50 from Amazon" -> type: "credit", confidence: 0.90
+        3. "You paid AED 120 at Carrefour" -> type: "debit", confidence: 0.95
+        4. "Credit card charge: Netflix AED 55" -> type: "debit", confidence: 0.95
+        5. "Transfer to your savings account" -> type: "transfer", confidence: 0.85
+
+        OTHER RULES:
         - Extract exact amounts and currencies (AED, USD, SAR, EUR, GBP, TWD, JPY)
         - Use email date if transaction date not specified
         - Only extract actual transaction amounts, NOT balances or credit limits
         - For transfers with exchange rates, extract the original currency amount
-        - "type" must be debit, credit, or transfer
+        - "confidence": 0.0-1.0 how certain you are about this transaction's extraction
 
         DEDUPLICATION RULES (critical):
-        - If the email contains BOTH individual line items AND a grand total, extract ONLY the line items, NOT the total (e.g., hotel bill with room + tax + service charge — extract those, skip the total)
-        - Credit card statement totals (本期應繳總金額, total amount due) should NOT be extracted — they double-count individual card transactions that were already extracted from other emails
-        - Bank auto-pay notifications (自動扣繳, automatic debit) and payment failure notices (扣款失敗) are NOT new transactions — return empty transactions array for these
-        - If multiple flight segments appear in one e-ticket receipt with the same booking, extract ONE transaction for the total fare, not per-segment
-        - Shipping/delivery notifications for an order are NOT new transactions — the purchase was already recorded from the order confirmation email
+        - If the email contains BOTH individual line items AND a grand total, extract ONLY the line items, NOT the total
+        - Credit card statement totals should NOT be extracted — they double-count individual transactions
+        - Bank auto-pay notifications and payment failure notices are NOT new transactions — return empty transactions array
+        - If multiple flight segments appear in one booking, extract ONE transaction for the total fare
+        - Shipping/delivery notifications are NOT new transactions
         """
+
+        if let examples = fewShotExamples {
+            userPrompt += "\n\n\(examples)"
+        }
 
         let response = try await openRouter.complete(
             model: PFMConfig.extractionModel,

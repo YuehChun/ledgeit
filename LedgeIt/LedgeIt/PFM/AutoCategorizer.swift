@@ -19,6 +19,10 @@ enum AutoCategorizer: Sendable {
         case investments = "INVESTMENTS"
         case shopping = "SHOPPING"
         case transport = "TRANSPORT"
+        case salaryAndWages = "SALARY_AND_WAGES"
+        case freelanceIncome = "FREELANCE_INCOME"
+        case investmentReturns = "INVESTMENT_RETURNS"
+        case refund = "REFUND"
         case general = "GENERAL"
 
         var displayName: String {
@@ -37,6 +41,10 @@ enum AutoCategorizer: Sendable {
             case .investments: return "Investments"
             case .shopping: return "Shopping"
             case .transport: return "Transport"
+            case .salaryAndWages: return "Salary & Wages"
+            case .freelanceIncome: return "Freelance Income"
+            case .investmentReturns: return "Investment Returns"
+            case .refund: return "Refund"
             case .general: return "General"
             }
         }
@@ -50,6 +58,8 @@ enum AutoCategorizer: Sendable {
                 return "financial"
             case .shopping, .transport, .general:
                 return "commerce"
+            case .salaryAndWages, .freelanceIncome, .investmentReturns, .refund:
+                return "income"
             }
         }
     }
@@ -265,13 +275,37 @@ enum AutoCategorizer: Sendable {
         merchant: String?,
         description: String?,
         docType: String?,
-        amount: Double?
+        amount: Double?,
+        type: String? = nil
     ) -> LeanCategory {
         let merchantStr = (merchant ?? "").trimmingCharacters(in: .whitespaces)
         let descriptionStr = (description ?? "").trimmingCharacters(in: .whitespaces)
 
         let merchantLower = merchantStr.lowercased()
         let descriptionLower = descriptionStr.lowercased()
+
+        // Income categorization — check first for credit-type transactions
+        if type?.lowercased() == "credit" {
+            let salaryKeywords = ["salary", "payroll", "wages", "employer"]
+            if salaryKeywords.contains(where: { merchantLower.contains($0) || descriptionLower.contains($0) }) {
+                return .salaryAndWages
+            }
+
+            let freelanceKeywords = ["freelance", "invoice payment", "consulting fee"]
+            if freelanceKeywords.contains(where: { merchantLower.contains($0) || descriptionLower.contains($0) }) {
+                return .freelanceIncome
+            }
+
+            let investmentKeywords = ["dividend", "interest earned", "capital gains", "investment return"]
+            if investmentKeywords.contains(where: { merchantLower.contains($0) || descriptionLower.contains($0) }) {
+                return .investmentReturns
+            }
+
+            let refundKeywords = ["refund", "cashback", "reversal", "return credit"]
+            if refundKeywords.contains(where: { merchantLower.contains($0) || descriptionLower.contains($0) }) {
+                return .refund
+            }
+        }
 
         // 1. Carrefour special cases
         let marketplaceIndicators = ["marketplace", "seller"]
@@ -330,17 +364,7 @@ enum AutoCategorizer: Sendable {
             }
         }
 
-        // 5. Amount heuristic
-        if let amount = amount {
-            let absAmount = abs(amount)
-            if absAmount > 5000 {
-                return .utilities
-            } else if absAmount < 100 {
-                return .shopping
-            }
-        }
-
-        // 6. Default
+        // 5. Default
         return .general
     }
 }

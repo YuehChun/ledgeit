@@ -449,8 +449,15 @@ struct TransferDetector: Sendable {
                 }
             }
             if keywordMatches > 0 {
-                let keywordScore = min(Double(keywordMatches) * 0.1, 0.3)
+                let keywordScore = min(Double(keywordMatches) * 0.08, 0.24)
                 score += keywordScore
+            }
+
+            // Negative signals: purchase/order/subscription context reduces transfer confidence
+            let negativeKeywords = ["purchase", "order", "subscription", "checkout", "shopping"]
+            let negativeCount = negativeKeywords.filter { textLower.contains($0) }.count
+            if negativeCount > 0 {
+                score -= Double(negativeCount) * 0.15
             }
 
             if score > 0 {
@@ -465,7 +472,7 @@ struct TransferDetector: Sendable {
 
         // Best match with threshold 0.3
         guard let best = matches.max(by: { $0.confidence < $1.confidence }),
-              best.confidence >= 0.3 else {
+              best.confidence >= 0.5 else {
             return TransferResult(
                 isTransfer: false, transferType: nil, transferSubtype: nil,
                 direction: "unknown", scope: "domestic", isOwn: false,
