@@ -252,7 +252,11 @@ struct DeduplicationService: Sendable {
     }
 
     private func llmTiebreaker(new: Transaction, existing: Transaction) async throws -> LLMResult {
-        let router = try OpenRouterService()
+        let providerConfig = AIProviderConfigStore.load()
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
         let prompt = """
             Compare these two transactions and determine if they are the same purchase:
 
@@ -262,8 +266,7 @@ struct DeduplicationService: Sendable {
             Answer ONLY in JSON: {"is_duplicate": true/false, "confidence": 0.0-1.0, "reason": "brief explanation"}
             """
 
-        let response = try await router.complete(
-            model: PFMConfig.classificationModel,
+        let response = try await session.complete(
             messages: [.user(prompt)],
             temperature: 0.0
         )

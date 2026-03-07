@@ -11,15 +11,11 @@ struct SettingsView: View {
     @State private var isConnecting: Bool = false
     @State private var isSyncing: Bool = false
     @State private var statusMessage: String?
-    @State private var creditInfo: OpenRouterService.CreditInfo?
+    @State private var creditInfo: OpenRouterCreditsService.CreditInfo?
     @State private var creditError: Bool = false
     @State private var isFetchingCredits: Bool = false
     @State private var creditLastUpdated: Date?
     @AppStorage("appLanguage") private var appLanguage = "en"
-    @AppStorage("llmClassificationModel") private var classificationModel = ""
-    @AppStorage("llmExtractionModel") private var extractionModel = ""
-    @AppStorage("llmStatementModel") private var statementModel = ""
-    @AppStorage("llmChatModel") private var chatModel = ""
     private var l10n: L10n { L10n(appLanguage) }
 
     var onKeySaved: (() -> Void)?
@@ -131,52 +127,6 @@ struct SettingsView: View {
                             }
                         }
 
-                        // LLM Model Settings
-                        SettingsSection(title: l10n.llmModels, icon: "cpu.fill", color: .indigo) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(l10n.llmModelsDesc)
-                                    .font(.caption).foregroundStyle(.secondary)
-
-                                ModelPicker(
-                                    label: l10n.classificationModelLabel,
-                                    description: l10n.classificationModelDesc,
-                                    selection: $classificationModel,
-                                    defaultModel: PFMConfig.defaultClassificationModel
-                                )
-
-                                ModelPicker(
-                                    label: l10n.extractionModelLabel,
-                                    description: l10n.extractionModelDesc,
-                                    selection: $extractionModel,
-                                    defaultModel: PFMConfig.defaultExtractionModel
-                                )
-
-                                ModelPicker(
-                                    label: l10n.statementModelLabel,
-                                    description: l10n.statementModelDesc,
-                                    selection: $statementModel,
-                                    defaultModel: PFMConfig.defaultStatementModel
-                                )
-
-                                ModelPicker(
-                                    label: l10n.chatModelLabel,
-                                    description: l10n.chatModelDesc,
-                                    selection: $chatModel,
-                                    defaultModel: PFMConfig.defaultChatModel
-                                )
-
-                                HStack {
-                                    Spacer()
-                                    Button(l10n.resetToDefaults) {
-                                        classificationModel = ""
-                                        extractionModel = ""
-                                        statementModel = ""
-                                        chatModel = ""
-                                    }
-                                    .buttonStyle(.bordered).controlSize(.small)
-                                }
-                            }
-                        }
 
                     }
                     .frame(maxWidth: .infinity)
@@ -482,13 +432,22 @@ struct SettingsView: View {
     }
 
     private func fetchOpenRouterCredits() {
-        guard let key = KeychainService.load(key: .openRouterAPIKey), !key.isEmpty else { return }
+        // Resolve the OpenRouter API key: try the new per-endpoint keychain first,
+        // then fall back to the legacy keychain key.
+        let config = AIProviderConfigStore.load()
+        let openRouterEndpointId = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let key: String? = KeychainService.loadEndpointAPIKey(endpointId: openRouterEndpointId)
+            ?? KeychainService.load(key: .openRouterAPIKey)
+        guard let apiKey = key, !apiKey.isEmpty else { return }
+        // Only show credits when an OpenRouter endpoint is actually configured
+        let hasOpenRouter = config.endpoints.contains(where: { $0.id == openRouterEndpointId })
+        guard hasOpenRouter else { return }
+
         isFetchingCredits = true
         creditError = false
         Task {
             do {
-                let service = try OpenRouterService()
-                let info = try await service.fetchCredits()
+                let info = try await OpenRouterCreditsService.fetchCredits(apiKey: apiKey)
                 creditInfo = info
                 creditLastUpdated = Date()
             } catch {
@@ -581,7 +540,7 @@ private struct SyncStatRow: View {
 }
 
 private struct OpenRouterCreditCard: View {
-    let info: OpenRouterService.CreditInfo
+    let info: OpenRouterCreditsService.CreditInfo
     let l10n: L10n
     let lastUpdated: Date?
     let onRefresh: () -> Void
@@ -702,33 +661,3 @@ private struct CreditStatCard: View {
     }
 }
 
-// MARK: - Model Picker
-
-private struct ModelPicker: View {
-    let label: String
-    let description: String
-    @Binding var selection: String
-    let defaultModel: String
-
-    private var effectiveSelection: Binding<String> {
-        Binding(
-            get: { selection.isEmpty ? defaultModel : selection },
-            set: { selection = $0 == defaultModel ? "" : $0 }
-        )
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.callout).fontWeight(.medium)
-            Text(description)
-                .font(.caption2).foregroundStyle(.tertiary)
-            Picker("", selection: effectiveSelection) {
-                ForEach(PFMConfig.availableModels, id: \.id) { model in
-                    Text(model.label).tag(model.id)
-                }
-            }
-            .labelsHidden()
-        }
-    }
-}
