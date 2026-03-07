@@ -36,7 +36,7 @@ actor OpenAICompatibleSession {
     let session: URLSession
 
     /// The full endpoint URL for chat completions, derived from `baseURL`.
-    private var completionsURL: String {
+    var completionsURL: String {
         baseURL.hasSuffix("/")
             ? baseURL + "chat/completions"
             : baseURL + "/chat/completions"

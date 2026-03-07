@@ -6,10 +6,7 @@ private let chatLogger = Logger(subsystem: "com.ledgeit.app", category: "ChatEng
 actor ChatEngine {
     private let queryService: FinancialQueryService
     private let embeddingService: EmbeddingService
-    private var openRouter: OpenRouterService?
-    private var conversationHistory: [OpenRouterService.Message] = []
-
-    private var model: String { PFMConfig.chatModel }
+    private var conversationHistory: [LLMMessage] = []
     private let maxToolIterations = 5
 
     init(
@@ -58,14 +55,20 @@ actor ChatEngine {
     ) async {
         do {
             chatLogger.debug("User: \(message)")
-            // Ensure OpenRouterService is initialized
-            let router = try getOrCreateOpenRouter()
 
             // Add user message to history
             conversationHistory.append(.user(message))
 
             // Build system prompt with current financial snapshot
             let systemPrompt = try await buildSystemPrompt()
+
+            // Create session via SessionFactory
+            let config = AIProviderConfigStore.load()
+            let session = try SessionFactory.makeSession(
+                assignment: config.chat,
+                config: config,
+                instructions: systemPrompt
+            )
 
             // Signal message started
             continuation.yield(.messageStarted(messageId))
@@ -83,19 +86,24 @@ actor ChatEngine {
 
             var fullResponse = ""
 
+            // Extract session properties once before the tool-calling loop
+            let sessionModel = await session.model
+            let sessionApiKey = await session.apiKey
+            let sessionCompletionsURL = await session.completionsURL
+            let sessionURLSession = await session.session
+
             // Tool-calling loop
             for _ in 0..<maxToolIterations {
                 var iterationText = ""
-                var toolCall: OpenRouterService.ToolCall?
+                var toolCall: LLMToolCall?
 
-                let routerApiKey = await router.apiKey
-                let routerSession = await router.session
-                let stream = OpenRouterService.performStreamComplete(
-                    model: model,
+                let stream = OpenAICompatibleSession.performStreamComplete(
+                    completionsURL: sessionCompletionsURL,
+                    model: sessionModel,
                     rawMessages: rawMessages,
                     tools: toolDefinitions,
-                    apiKey: routerApiKey,
-                    session: routerSession
+                    apiKey: sessionApiKey,
+                    session: sessionURLSession
                 )
 
                 for await event in stream {
@@ -167,17 +175,6 @@ actor ChatEngine {
         }
     }
 
-    // MARK: - OpenRouter Init
-
-    private func getOrCreateOpenRouter() throws -> OpenRouterService {
-        if let existing = openRouter {
-            return existing
-        }
-        let service = try OpenRouterService()
-        openRouter = service
-        return service
-    }
-
     // MARK: - System Prompt
 
     private func buildSystemPrompt() async throws -> String {
@@ -229,9 +226,9 @@ actor ChatEngine {
 
     // MARK: - Tool Definitions
 
-    private var toolDefinitions: [OpenRouterService.ToolDefinition] {
+    private var toolDefinitions: [LLMToolDefinition] {
         [
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_transactions",
                 description: "Get a list of transactions with optional filters",
                 parameters: [
@@ -248,7 +245,7 @@ actor ChatEngine {
                     "required": [] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_spending_summary",
                 description: "Get a spending summary for a date range including income, expenses, and net savings",
                 parameters: [
@@ -260,7 +257,7 @@ actor ChatEngine {
                     "required": ["start_date", "end_date"] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_category_breakdown",
                 description: "Get spending breakdown by category for a date range",
                 parameters: [
@@ -272,7 +269,7 @@ actor ChatEngine {
                     "required": ["start_date", "end_date"] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_top_merchants",
                 description: "Get top merchants by spending amount for a date range",
                 parameters: [
@@ -285,7 +282,7 @@ actor ChatEngine {
                     "required": ["start_date", "end_date"] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_upcoming_payments",
                 description: "Get all unpaid credit card bills (including overdue). Use when user asks about credit card payments, due dates, or bills.",
                 parameters: [
@@ -294,7 +291,7 @@ actor ChatEngine {
                     "required": [] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_goals",
                 description: "Get financial goals, optionally filtered by status",
                 parameters: [
@@ -305,7 +302,7 @@ actor ChatEngine {
                     "required": [] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "search_transactions",
                 description: "Search transactions by merchant, description, or category keyword",
                 parameters: [
@@ -316,7 +313,7 @@ actor ChatEngine {
                     "required": ["query"] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "get_account_overview",
                 description: "Get a high-level overview of the account including income, expenses, upcoming payments, and goals",
                 parameters: [
@@ -325,7 +322,7 @@ actor ChatEngine {
                     "required": [] as [String]
                 ] as [String: Any]
             ),
-            OpenRouterService.ToolDefinition(
+            LLMToolDefinition(
                 name: "semantic_search",
                 description: "Search transactions using hybrid search (semantic + keyword). IMPORTANT: Always provide BOTH the original term AND its English/Chinese translation in the queries array for cross-language matching.",
                 parameters: [
