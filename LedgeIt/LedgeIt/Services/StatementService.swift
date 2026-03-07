@@ -89,8 +89,8 @@ final class StatementService {
         let (document, matchedPw) = try decryptPDF(data: data)
         let pdfText = try extractText(from: document)
 
-        let openRouter = try OpenRouterService()
-        let llmProcessor = LLMProcessor(openRouter: openRouter)
+        let providerConfig = AIProviderConfigStore.load()
+        let llmProcessor = LLMProcessor(providerConfig: providerConfig)
         let extractor = PDFExtractor(llmProcessor: llmProcessor)
         // Use multi-layer statement extraction (classify → extract with powerful model)
         guard let financialData = try await extractor.extractStatementData(

@@ -415,8 +415,8 @@ struct SettingsView: View {
 
         statusMessage = "Classifying \(unprocessedCount) emails..."
 
-        let openRouter = try OpenRouterService()
-        let llmProcessor = LLMProcessor(openRouter: openRouter)
+        let providerConfig = AIProviderConfigStore.load()
+        let llmProcessor = LLMProcessor(providerConfig: providerConfig)
         let pipeline = ExtractionPipeline(database: database, llmProcessor: llmProcessor)
         try await pipeline.processUnprocessedEmails()
         loadSyncState()
@@ -452,8 +452,8 @@ struct SettingsView: View {
 
             do {
                 let database = AppDatabase.shared
-                let openRouter = try OpenRouterService()
-                let llmProcessor = LLMProcessor(openRouter: openRouter)
+                let providerConfig = AIProviderConfigStore.load()
+                let llmProcessor = LLMProcessor(providerConfig: providerConfig)
                 let pipeline = ExtractionPipeline(database: database, llmProcessor: llmProcessor)
                 let calendarService = CalendarService { [authService] in
                     try await authService.getValidAccessToken()

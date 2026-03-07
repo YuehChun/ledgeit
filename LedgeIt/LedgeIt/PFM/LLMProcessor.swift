@@ -107,7 +107,7 @@ struct LLMProcessor: Sendable {
 
     // MARK: - Properties
 
-    let openRouter: OpenRouterService
+    let providerConfig: AIProviderConfiguration
 
     // MARK: - Classification
 
@@ -141,13 +141,16 @@ struct LLMProcessor: Sendable {
         }
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.classificationModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.classification,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
             ],
-            temperature: PFMConfig.llmTemperature,
+            temperature: PFMConfig.llmTemperature
         )
 
         return try parseJSON(response, as: ClassificationLLMResult.self)
@@ -218,8 +221,11 @@ struct LLMProcessor: Sendable {
         - Shipping/delivery notifications for an order are NOT new transactions — the purchase was already recorded from the order confirmation email
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
@@ -271,8 +277,11 @@ struct LLMProcessor: Sendable {
         - If you cannot find a due date, return null for due_date
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
@@ -347,8 +356,11 @@ struct LLMProcessor: Sendable {
         }
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.classificationModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.classification,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
@@ -364,7 +376,7 @@ struct LLMProcessor: Sendable {
     func extractFromImage(imageData: Data) async throws -> String {
         let base64 = imageData.base64EncodedString()
 
-        let message = OpenRouterService.Message.userWithImage(
+        let message = LLMMessage.userWithImage(
             text: """
             Extract all financial transaction information from this image. \
             Include amounts, currencies, merchant names, dates, and transaction types. \
@@ -373,8 +385,11 @@ struct LLMProcessor: Sendable {
             imageBase64: base64
         )
 
-        return try await openRouter.complete(
-            model: PFMConfig.visionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        return try await session.complete(
             messages: [message],
             temperature: PFMConfig.llmTemperature
         )

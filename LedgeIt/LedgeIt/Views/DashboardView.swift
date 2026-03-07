@@ -483,8 +483,8 @@ struct DashboardView: View {
             defer { isAnalyzing = false; analysisStep = 0 }
             do {
                 analysisStep = 0 // Loading transactions
-                let openRouter = try OpenRouterService()
-                let processor = LLMProcessor(openRouter: openRouter)
+                let providerConfig = AIProviderConfigStore.load()
+                let processor = LLMProcessor(providerConfig: providerConfig)
                 let summaryText = """
                     Total spending: \(String(format: "%.2f", summary.totalSpending)) \(primaryCurrency)
                     Total income: \(String(format: "%.2f", summary.totalIncome)) \(primaryCurrency)

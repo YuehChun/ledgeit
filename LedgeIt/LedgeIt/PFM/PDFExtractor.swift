@@ -104,8 +104,11 @@ struct PDFExtractor: Sendable {
         - If no transactions found, return empty transactions array
         """
 
-        let response = try await llmProcessor.openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: llmProcessor.providerConfig.extraction,
+            config: llmProcessor.providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
@@ -152,8 +155,11 @@ struct PDFExtractor: Sendable {
         }
         """
 
-        let classifyResponse = try await llmProcessor.openRouter.complete(
-            model: PFMConfig.classificationModel,
+        let classifySession = try SessionFactory.makeSession(
+            assignment: llmProcessor.providerConfig.classification,
+            config: llmProcessor.providerConfig
+        )
+        let classifyResponse = try await classifySession.complete(
             messages: [
                 .system("You are a financial document classifier. Return ONLY valid JSON."),
                 .user(classifyPrompt)
@@ -238,8 +244,11 @@ struct PDFExtractor: Sendable {
         - If payment info is not found, set payment_summary to null
         """
 
-        let response = try await llmProcessor.openRouter.complete(
-            model: PFMConfig.statementModel,
+        let statementSession = try SessionFactory.makeSession(
+            assignment: llmProcessor.providerConfig.statement,
+            config: llmProcessor.providerConfig
+        )
+        let response = try await statementSession.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)

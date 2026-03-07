@@ -199,8 +199,8 @@ struct ContentView: View {
             }
 
             autoSyncStatus = "Processing \(unprocessed) emails..."
-            let openRouter = try OpenRouterService()
-            let llm = LLMProcessor(openRouter: openRouter)
+            let providerConfig = AIProviderConfigStore.load()
+            let llm = LLMProcessor(providerConfig: providerConfig)
             let pipeline = ExtractionPipeline(database: database, llmProcessor: llm)
             try await pipeline.processUnprocessedEmails()
         } catch {
