@@ -8,68 +8,65 @@ import Foundation
 
 // MARK: - Message
 
-struct LLMMessage: Codable, Sendable {
+struct LLMMessage: Sendable {
     let role: String
     let content: LLMMessageContent
+    let toolCalls: [LLMToolCall]?
+    let toolCallId: String?
 
-    enum LLMMessageContent: Codable, Sendable {
+    enum LLMMessageContent: Sendable {
         case text(String)
         case parts([LLMContentPart])
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            switch self {
-            case .text(let string):
-                try container.encode(string)
-            case .parts(let parts):
-                try container.encode(parts)
-            }
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.singleValueContainer()
-            if let string = try? container.decode(String.self) {
-                self = .text(string)
-            } else {
-                self = .parts(try container.decode([LLMContentPart].self))
-            }
-        }
     }
 
     static func system(_ text: String) -> LLMMessage {
-        LLMMessage(role: "system", content: .text(text))
+        LLMMessage(role: "system", content: .text(text), toolCalls: nil, toolCallId: nil)
     }
 
     static func user(_ text: String) -> LLMMessage {
-        LLMMessage(role: "user", content: .text(text))
+        LLMMessage(role: "user", content: .text(text), toolCalls: nil, toolCallId: nil)
     }
 
     static func userWithImage(text: String, imageBase64: String, mimeType: String = "image/png") -> LLMMessage {
         LLMMessage(role: "user", content: .parts([
             LLMContentPart(type: "text", text: text, imageUrl: nil),
             LLMContentPart(type: "image_url", text: nil, imageUrl: .init(url: "data:\(mimeType);base64,\(imageBase64)"))
-        ]))
+        ]), toolCalls: nil, toolCallId: nil)
     }
 
     static func assistant(_ text: String) -> LLMMessage {
-        LLMMessage(role: "assistant", content: .text(text))
+        LLMMessage(role: "assistant", content: .text(text), toolCalls: nil, toolCallId: nil)
+    }
+
+    /// Assistant message that includes tool calls (may also have text content)
+    static func assistantWithToolCalls(_ text: String?, toolCalls: [LLMToolCall]) -> LLMMessage {
+        LLMMessage(
+            role: "assistant",
+            content: .text(text ?? ""),
+            toolCalls: toolCalls,
+            toolCallId: nil
+        )
+    }
+
+    /// Tool result message (response to a tool call)
+    static func toolResult(callId: String, content: String) -> LLMMessage {
+        LLMMessage(
+            role: "tool",
+            content: .text(content),
+            toolCalls: nil,
+            toolCallId: callId
+        )
     }
 }
 
 // MARK: - Content Part
 
-struct LLMContentPart: Codable, Sendable {
+struct LLMContentPart: Sendable {
     let type: String
     let text: String?
     let imageUrl: ImageURL?
 
-    enum CodingKeys: String, CodingKey {
-        case type
-        case text
-        case imageUrl = "image_url"
-    }
-
-    struct ImageURL: Codable, Sendable {
+    struct ImageURL: Sendable {
         let url: String
     }
 }
