@@ -73,37 +73,20 @@ actor ChatEngine {
             // Signal message started
             continuation.yield(.messageStarted(messageId))
 
-            // Build raw messages array: system + conversation history
-            var rawMessages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
-            for msg in conversationHistory {
-                switch msg.content {
-                case .text(let str):
-                    rawMessages.append(["role": msg.role, "content": str])
-                case .parts:
-                    rawMessages.append(["role": msg.role, "content": ""])
-                }
-            }
+            // Build messages: system + conversation history
+            var messages: [LLMMessage] = [.system(systemPrompt)]
+            messages.append(contentsOf: conversationHistory)
 
             var fullResponse = ""
-
-            // Extract session properties once before the tool-calling loop
-            let sessionModel = await session.model
-            let sessionApiKey = await session.apiKey
-            let sessionCompletionsURL = await session.completionsURL
-            let sessionURLSession = await session.session
 
             // Tool-calling loop
             for _ in 0..<maxToolIterations {
                 var iterationText = ""
                 var toolCall: LLMToolCall?
 
-                let stream = OpenAICompatibleSession.performStreamComplete(
-                    completionsURL: sessionCompletionsURL,
-                    model: sessionModel,
-                    rawMessages: rawMessages,
-                    tools: toolDefinitions,
-                    apiKey: sessionApiKey,
-                    session: sessionURLSession
+                let stream = await session.streamComplete(
+                    messages: messages,
+                    tools: toolDefinitions
                 )
 
                 for await event in stream {
@@ -122,17 +105,14 @@ actor ChatEngine {
                     }
                 }
 
-                // If we got text, accumulate it
                 fullResponse += iterationText
 
-                // If no tool call, we are done
                 guard let tc = toolCall else {
                     chatLogger.debug("No tool call in this iteration, done.")
                     break
                 }
                 chatLogger.debug("Tool call: \(tc.name)")
 
-                // Execute tool call
                 continuation.yield(.toolCallStarted(tc.name))
 
                 let toolResult: String
@@ -142,24 +122,12 @@ actor ChatEngine {
                     toolResult = "Error executing tool \(tc.name): \(error.localizedDescription)"
                 }
 
-                // Append assistant message WITH tool_calls metadata
-                var assistantMsg: [String: Any] = ["role": "assistant"]
-                if !iterationText.isEmpty {
-                    assistantMsg["content"] = iterationText
-                }
-                assistantMsg["tool_calls"] = [[
-                    "id": tc.id,
-                    "type": "function",
-                    "function": ["name": tc.name, "arguments": tc.arguments]
-                ] as [String: Any]]
-                rawMessages.append(assistantMsg)
-
-                // Append tool result with proper role and tool_call_id
-                rawMessages.append([
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": toolResult
-                ])
+                // Append assistant message with tool call + tool result
+                messages.append(.assistantWithToolCalls(
+                    iterationText.isEmpty ? nil : iterationText,
+                    toolCalls: [tc]
+                ))
+                messages.append(.toolResult(callId: tc.id, content: toolResult))
             }
 
             // Save the full assistant response to conversation history
