@@ -7,7 +7,6 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.0.16"),
-        .package(url: "https://github.com/SwiftedMind/SwiftAgent.git", branch: "main"),
     ],
     targets: [
         .target(
@@ -23,8 +22,6 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Embeddings", package: "swift-embeddings"),
-                .product(name: "OpenAISession", package: "SwiftAgent"),
-                .product(name: "AnthropicSession", package: "SwiftAgent"),
                 "CSQLiteVec",
             ],
             path: "LedgeIt",
