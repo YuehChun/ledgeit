@@ -3,7 +3,6 @@ import GRDB
 
 struct SettingsView: View {
     @State private var authService = GoogleAuthService()
-    @State private var openRouterKey: String = ""
     @State private var googleClientID: String = ""
     @State private var googleClientSecret: String = ""
     @State private var authError: String?
@@ -257,9 +256,6 @@ struct SettingsView: View {
 
             statusMessage = "Saving credentials..."
             do {
-                if !openRouterKey.isEmpty {
-                    try KeychainService.save(key: .openRouterAPIKey, value: openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
                 if !googleClientID.isEmpty {
                     try KeychainService.save(key: .googleClientID, value: googleClientID.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
@@ -410,7 +406,6 @@ struct SettingsView: View {
     // MARK: - Data
 
     private func loadSettings() {
-        openRouterKey = KeychainService.load(key: .openRouterAPIKey) ?? ""
         googleClientID = KeychainService.load(key: .googleClientID) ?? ""
         googleClientSecret = KeychainService.load(key: .googleClientSecret) ?? ""
         loadSyncState()

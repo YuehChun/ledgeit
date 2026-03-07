@@ -121,7 +121,7 @@ struct PDFExtractor: Sendable {
 
     /// Multi-layer extraction for credit card statements.
     /// Layer 1: Classify document type (payment notice vs. transaction detail)
-    /// Layer 2: Extract transactions with a powerful model (e.g., Gemini 2.5 Pro)
+    /// Layer 2: Extract transactions using the model configured for the 'statement' use case.
     func extractStatementData(
         pdfText: String,
         filename: String,

@@ -334,6 +334,9 @@ struct AIProviderSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.callout)
                     .onSubmit { saveConfig() }
+                    .onChange(of: config[keyPath: keyPath].model) { _, _ in
+                        saveConfig()
+                    }
                 }
             }
         }
