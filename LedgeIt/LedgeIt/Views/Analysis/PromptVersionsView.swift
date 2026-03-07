@@ -87,8 +87,8 @@ struct PromptVersionsView: View {
 
         Task {
             do {
-                let service = try OpenRouterService()
-                let optimizer = PromptOptimizer(openRouter: service)
+                let providerConfig = AIProviderConfigStore.load()
+                let optimizer = PromptOptimizer(providerConfig: providerConfig)
                 let result = try await optimizer.optimizePrompt(
                     currentPersona: persona,
                     feedback: feedbackText,

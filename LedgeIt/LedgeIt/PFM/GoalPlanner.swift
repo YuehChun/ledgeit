@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 struct GoalPlanner: Sendable {
-    let openRouter: OpenRouterService
+    let providerConfig: AIProviderConfiguration
     let database: AppDatabase
 
     // MARK: - Result Types
@@ -135,8 +135,11 @@ struct GoalPlanner: Sendable {
         - LANGUAGE: All user-facing text (title, description, reasoning) MUST be written in \(languageName)
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)

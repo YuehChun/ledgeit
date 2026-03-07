@@ -38,12 +38,13 @@ final class GoalGenerationService: ObservableObject {
                         .fetchOne(db)
                 }
 
+                let providerConfig = AIProviderConfigStore.load()
+
                 if let saved, let adviceData = saved.adviceJSON.data(using: .utf8),
                    let decoded = try? JSONDecoder().decode(FinancialAdvisor.SpendingAdvice.self, from: adviceData) {
                     advice = decoded
                 } else {
-                    let openRouter = try OpenRouterService()
-                    let advisor = FinancialAdvisor(openRouter: openRouter)
+                    let advisor = FinancialAdvisor(providerConfig: providerConfig)
                     advice = try await advisor.analyzeSpendingHabits(
                         report: monthlyReport, trends: [], language: language, persona: persona
                     )
@@ -57,8 +58,7 @@ final class GoalGenerationService: ObservableObject {
                         .deleteAll(db)
                 }
 
-                let openRouter = try OpenRouterService()
-                let planner = GoalPlanner(openRouter: openRouter, database: AppDatabase.shared)
+                let planner = GoalPlanner(providerConfig: providerConfig, database: AppDatabase.shared)
 
                 // Step 2: Calculating targets
                 self.currentStep = 2

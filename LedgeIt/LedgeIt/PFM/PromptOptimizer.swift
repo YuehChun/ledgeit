@@ -1,7 +1,7 @@
 import Foundation
 
 struct PromptOptimizer: Sendable {
-    let openRouter: OpenRouterService
+    let providerConfig: AIProviderConfiguration
 
     struct OptimizedPrompt: Codable, Sendable {
         let spendingPhilosophy: String
@@ -76,8 +76,11 @@ struct PromptOptimizer: Sendable {
         - If feedback mentions specific categories, adjust that category's budget hint
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)

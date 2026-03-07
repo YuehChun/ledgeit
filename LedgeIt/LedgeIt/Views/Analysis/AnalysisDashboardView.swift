@@ -321,8 +321,8 @@ struct AnalysisDashboardView: View {
             defer { isGenerating = false; progress = ""; generationStep = 0 }
             do {
                 generationStep = 0 // Loading data
-                let openRouter = try OpenRouterService()
-                let generator = ReportGenerator(database: AppDatabase.shared, openRouter: openRouter)
+                let providerConfig = AIProviderConfigStore.load()
+                let generator = ReportGenerator(database: AppDatabase.shared, providerConfig: providerConfig)
                 let calendar = Calendar.current
                 let now = Date()
                 let year = calendar.component(.year, from: now)

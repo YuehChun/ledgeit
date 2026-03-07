@@ -310,8 +310,8 @@ struct AdvisorSettingsView: View {
             defer { isOptimizing = false; optimizeStep = 0 }
             do {
                 optimizeStep = 0 // Processing feedback
-                let openRouter = try OpenRouterService()
-                let optimizer = PromptOptimizer(openRouter: openRouter)
+                let providerConfig = AIProviderConfigStore.load()
+                let optimizer = PromptOptimizer(providerConfig: providerConfig)
                 optimizeStep = 1 // Adjusting parameters
                 optimizedPreview = try await optimizer.optimizePrompt(
                     currentPersona: persona, feedback: feedback, language: language

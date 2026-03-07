@@ -12,11 +12,11 @@ final class ReportGenerator {
     var isGenerating = false
     var progress: String = ""
 
-    init(database: AppDatabase, openRouter: OpenRouterService) {
+    init(database: AppDatabase, providerConfig: AIProviderConfiguration) {
         self.database = database
         self.analyzer = SpendingAnalyzer(database: database)
-        self.advisor = FinancialAdvisor(openRouter: openRouter)
-        self.goalPlanner = GoalPlanner(openRouter: openRouter, database: database)
+        self.advisor = FinancialAdvisor(providerConfig: providerConfig)
+        self.goalPlanner = GoalPlanner(providerConfig: providerConfig, database: database)
     }
 
     // MARK: - Full Report Types

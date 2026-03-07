@@ -1,7 +1,7 @@
 import Foundation
 
 struct FinancialAdvisor: Sendable {
-    let openRouter: OpenRouterService
+    let providerConfig: AIProviderConfiguration
 
     // MARK: - Result Types
 
@@ -114,8 +114,11 @@ struct FinancialAdvisor: Sendable {
         - LANGUAGE: All user-facing text MUST be written in \(languageName)
         """
 
-        let response = try await openRouter.complete(
-            model: PFMConfig.extractionModel,
+        let session = try SessionFactory.makeSession(
+            assignment: providerConfig.extraction,
+            config: providerConfig
+        )
+        let response = try await session.complete(
             messages: [
                 .system(systemPrompt),
                 .user(userPrompt)
