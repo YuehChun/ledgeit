@@ -4,12 +4,15 @@ enum SessionFactory {
 
     enum SessionError: LocalizedError {
         case endpointNotFound(UUID)
+        case missingEndpointId(provider: AIProvider)
         case missingAPIKey(provider: String)
 
         var errorDescription: String? {
             switch self {
             case .endpointNotFound(let id):
                 return "Endpoint configuration not found: \(id)"
+            case .missingEndpointId(let provider):
+                return "Endpoint ID is required for provider: \(provider.rawValue)"
             case .missingAPIKey(let provider):
                 return "API key not configured for \(provider)"
             }
@@ -29,9 +32,11 @@ enum SessionFactory {
     ) throws -> any LLMSession {
         switch assignment.provider {
         case .openAICompatible:
-            guard let endpointId = assignment.endpointId,
-                  let endpoint = config.endpoints.first(where: { $0.id == endpointId }) else {
-                throw SessionError.endpointNotFound(assignment.endpointId ?? UUID())
+            guard let endpointId = assignment.endpointId else {
+                throw SessionError.missingEndpointId(provider: assignment.provider)
+            }
+            guard let endpoint = config.endpoints.first(where: { $0.id == endpointId }) else {
+                throw SessionError.endpointNotFound(endpointId)
             }
             let apiKey = endpoint.requiresAPIKey
                 ? KeychainService.loadEndpointAPIKey(endpointId: endpoint.id)

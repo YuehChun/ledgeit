@@ -2,14 +2,21 @@ import Foundation
 
 // MARK: - Shared LLM Types
 //
-// These types are used by all provider session adapters (OpenAICompatibleSession,
-// GoogleSession, etc.) and are defined at top level to avoid Swift's restriction
-// on accessing nested types of actors from outside the actor.
+// These types form the shared abstraction layer used by all provider session adapters
+// (OpenAICompatibleSession, AnthropicSession, GoogleSession) and by consumer code
+// (ChatEngine, LLMProcessor, etc.).
 
 // MARK: - Message
 
 struct LLMMessage: Sendable {
-    let role: String
+    enum Role: String, Sendable {
+        case system
+        case user
+        case assistant
+        case tool
+    }
+
+    let role: Role
     let content: LLMMessageContent
     let toolCalls: [LLMToolCall]?
     let toolCallId: String?
@@ -19,29 +26,37 @@ struct LLMMessage: Sendable {
         case parts([LLMContentPart])
     }
 
+    /// Extracts the plain-text content from a message, ignoring image parts.
+    var text: String? {
+        switch content {
+        case .text(let string): return string
+        case .parts(let parts): return parts.compactMap(\.text).joined(separator: "\n")
+        }
+    }
+
     static func system(_ text: String) -> LLMMessage {
-        LLMMessage(role: "system", content: .text(text), toolCalls: nil, toolCallId: nil)
+        LLMMessage(role: .system, content: .text(text), toolCalls: nil, toolCallId: nil)
     }
 
     static func user(_ text: String) -> LLMMessage {
-        LLMMessage(role: "user", content: .text(text), toolCalls: nil, toolCallId: nil)
+        LLMMessage(role: .user, content: .text(text), toolCalls: nil, toolCallId: nil)
     }
 
     static func userWithImage(text: String, imageBase64: String, mimeType: String = "image/png") -> LLMMessage {
-        LLMMessage(role: "user", content: .parts([
+        LLMMessage(role: .user, content: .parts([
             LLMContentPart(type: "text", text: text, imageUrl: nil),
             LLMContentPart(type: "image_url", text: nil, imageUrl: .init(url: "data:\(mimeType);base64,\(imageBase64)"))
         ]), toolCalls: nil, toolCallId: nil)
     }
 
     static func assistant(_ text: String) -> LLMMessage {
-        LLMMessage(role: "assistant", content: .text(text), toolCalls: nil, toolCallId: nil)
+        LLMMessage(role: .assistant, content: .text(text), toolCalls: nil, toolCallId: nil)
     }
 
     /// Assistant message that includes tool calls (may also have text content)
     static func assistantWithToolCalls(_ text: String?, toolCalls: [LLMToolCall]) -> LLMMessage {
         LLMMessage(
-            role: "assistant",
+            role: .assistant,
             content: .text(text ?? ""),
             toolCalls: toolCalls,
             toolCallId: nil
@@ -51,7 +66,7 @@ struct LLMMessage: Sendable {
     /// Tool result message (response to a tool call)
     static func toolResult(callId: String, content: String) -> LLMMessage {
         LLMMessage(
-            role: "tool",
+            role: .tool,
             content: .text(content),
             toolCalls: nil,
             toolCallId: callId
@@ -73,11 +88,15 @@ struct LLMContentPart: Sendable {
 
 // MARK: - Tool Calling Types
 
+/// `@unchecked Sendable` because `parameters` is `[String: Any]` which is not statically Sendable.
+/// Safe because all properties are `let` and the dictionaries are constructed once and never mutated.
 struct LLMToolDefinition: @unchecked Sendable {
     let name: String
     let description: String
     let parameters: [String: Any]
 
+    /// Serializes the tool definition in the OpenAI function-calling format.
+    /// Only used by OpenAICompatibleSession; other providers have their own serialization.
     func toDict() -> [String: Any] {
         [
             "type": "function",
@@ -110,6 +129,7 @@ enum LLMStreamEvent: Sendable {
 enum LLMProviderError: LocalizedError {
     case missingAPIKey
     case requestFailed(Int)
+    case apiError(String)
     case invalidResponse
     case rateLimited
 
@@ -119,6 +139,8 @@ enum LLMProviderError: LocalizedError {
             return "API key is required but was not provided"
         case .requestFailed(let code):
             return "Request failed with status \(code)"
+        case .apiError(let message):
+            return "Provider API error: \(message)"
         case .invalidResponse:
             return "Invalid response from provider"
         case .rateLimited:

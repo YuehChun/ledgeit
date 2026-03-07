@@ -17,14 +17,6 @@ import Foundation
 /// ```
 actor OpenAICompatibleSession: LLMSession {
 
-    // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
-
-    typealias Message = LLMMessage
-    typealias ToolDefinition = LLMToolDefinition
-    typealias ToolCall = LLMToolCall
-    typealias StreamEvent = LLMStreamEvent
-    typealias ProviderError = LLMProviderError
-
     // MARK: - Properties
 
     let baseURL: String
@@ -67,12 +59,12 @@ actor OpenAICompatibleSession: LLMSession {
 
     /// Sends a chat completion request and returns the full response text.
     func complete(
-        messages: [Message],
+        messages: [LLMMessage],
         temperature: Double = 0.1,
         maxTokens: Int? = nil
     ) async throws -> String {
         guard let url = URL(string: completionsURL) else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         var request = URLRequest(url: url)
@@ -103,23 +95,22 @@ actor OpenAICompatibleSession: LLMSession {
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         if httpResponse.statusCode == 429 {
-            throw ProviderError.rateLimited
+            throw LLMProviderError.rateLimited
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw ProviderError.requestFailed(httpResponse.statusCode)
+            throw LLMProviderError.requestFailed(httpResponse.statusCode)
         }
 
         let json: Any
         do {
             json = try JSONSerialization.jsonObject(with: data)
         } catch {
-            print("[OpenAICompatibleSession] Failed to parse API response as JSON")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         guard let dict = json as? [String: Any],
@@ -129,11 +120,9 @@ actor OpenAICompatibleSession: LLMSession {
               let content = message["content"] as? String else {
             if let dict = json as? [String: Any], let errorObj = dict["error"] as? [String: Any] {
                 let msg = errorObj["message"] as? String ?? "Unknown API error"
-                print("[OpenAICompatibleSession] API error: \(msg)")
-                throw ProviderError.requestFailed(-1)
+                throw LLMProviderError.apiError(msg)
             }
-            print("[OpenAICompatibleSession] Unexpected response structure")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         return content
@@ -143,12 +132,17 @@ actor OpenAICompatibleSession: LLMSession {
 
     /// Sends a streaming chat completion request and returns an async stream of events.
     func streamComplete(
-        messages: [Message],
-        tools: [ToolDefinition] = [],
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition] = [],
         temperature: Double = 0.3,
         maxTokens: Int? = nil
-    ) -> AsyncStream<StreamEvent> {
-        let rawMessages = Self.serializeMessages(messages)
+    ) -> AsyncStream<LLMStreamEvent> {
+        // Prepend system instructions if provided (consistent with complete())
+        var allMessages = messages
+        if !instructions.isEmpty {
+            allMessages.insert(.system(instructions), at: 0)
+        }
+        let rawMessages = Self.serializeMessages(allMessages)
         return Self.performStreamComplete(
             completionsURL: completionsURL,
             model: model,
@@ -167,12 +161,12 @@ actor OpenAICompatibleSession: LLMSession {
         completionsURL: String,
         model: String,
         rawMessages: [[String: Any]],
-        tools: [ToolDefinition] = [],
+        tools: [LLMToolDefinition] = [],
         temperature: Double = 0.3,
         maxTokens: Int? = nil,
         apiKey: String?,
         session: URLSession
-    ) -> AsyncStream<StreamEvent> {
+    ) -> AsyncStream<LLMStreamEvent> {
         guard let url = URL(string: completionsURL) else {
             return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
         }
@@ -203,7 +197,7 @@ actor OpenAICompatibleSession: LLMSession {
         request.timeoutInterval = 120
         request.httpBody = httpBody
 
-        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
+        let (stream, continuation) = AsyncStream.makeStream(of: LLMStreamEvent.self)
 
         Task.detached {
             do {
@@ -231,7 +225,7 @@ actor OpenAICompatibleSession: LLMSession {
                     if payload == "[DONE]" {
                         for (_, tc) in toolCalls.sorted(by: { $0.key < $1.key }) {
                             if !tc.name.isEmpty {
-                                continuation.yield(.toolCall(ToolCall(
+                                continuation.yield(.toolCall(LLMToolCall(
                                     id: tc.id,
                                     name: tc.name,
                                     arguments: tc.arguments
@@ -280,6 +274,7 @@ actor OpenAICompatibleSession: LLMSession {
                     }
                 }
 
+                continuation.yield(.done)
                 continuation.finish()
             } catch {
                 continuation.yield(.error(error.localizedDescription))
@@ -292,8 +287,8 @@ actor OpenAICompatibleSession: LLMSession {
 
     // MARK: - Helpers
 
-    /// Converts an array of `Message` values into raw dictionaries for JSON serialization.
-    private static func serializeMessages(_ messages: [Message]) -> [[String: Any]] {
+    /// Converts an array of `LLMMessage` values into raw dictionaries for JSON serialization.
+    private static func serializeMessages(_ messages: [LLMMessage]) -> [[String: Any]] {
         messages.map { msg -> [String: Any] in
             let contentValue: Any
             switch msg.content {
@@ -307,7 +302,7 @@ actor OpenAICompatibleSession: LLMSession {
                     return dict
                 }
             }
-            var dict: [String: Any] = ["role": msg.role, "content": contentValue]
+            var dict: [String: Any] = ["role": msg.role.rawValue, "content": contentValue]
 
             // Tool calls (assistant messages)
             if let toolCalls = msg.toolCalls, !toolCalls.isEmpty {

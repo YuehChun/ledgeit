@@ -77,8 +77,12 @@ struct AIProviderSettingsView: View {
                 onSave: { newEndpoint, apiKey in
                     config.endpoints.append(newEndpoint)
                     if let apiKey, !apiKey.isEmpty {
-                        try? KeychainService.saveEndpointAPIKey(endpointId: newEndpoint.id, value: apiKey)
-                        endpointAPIKeys[newEndpoint.id] = apiKey
+                        do {
+                            try KeychainService.saveEndpointAPIKey(endpointId: newEndpoint.id, value: apiKey)
+                            endpointAPIKeys[newEndpoint.id] = apiKey
+                        } catch {
+                            saveMessage = "Failed to save API key"
+                        }
                     }
                     saveConfig()
                 }
@@ -96,8 +100,12 @@ struct AIProviderSettingsView: View {
                             KeychainService.deleteEndpointAPIKey(endpointId: updatedEndpoint.id)
                             endpointAPIKeys.removeValue(forKey: updatedEndpoint.id)
                         } else {
-                            try? KeychainService.saveEndpointAPIKey(endpointId: updatedEndpoint.id, value: apiKey)
-                            endpointAPIKeys[updatedEndpoint.id] = apiKey
+                            do {
+                                try KeychainService.saveEndpointAPIKey(endpointId: updatedEndpoint.id, value: apiKey)
+                                endpointAPIKeys[updatedEndpoint.id] = apiKey
+                            } catch {
+                                saveMessage = "Failed to save API key"
+                            }
                         }
                     }
                     saveConfig()
@@ -215,10 +223,15 @@ struct AIProviderSettingsView: View {
                     let value = binding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     if value.isEmpty {
                         KeychainService.delete(key: key)
+                        flashSaveMessage("Saved")
                     } else {
-                        try? KeychainService.save(key: key, value: value)
+                        do {
+                            try KeychainService.save(key: key, value: value)
+                            flashSaveMessage("Saved")
+                        } catch {
+                            flashSaveMessage("Failed to save key")
+                        }
                     }
-                    flashSaveMessage("Saved")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

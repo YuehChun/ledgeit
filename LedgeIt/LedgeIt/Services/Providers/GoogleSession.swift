@@ -16,14 +16,6 @@ import Foundation
 /// ```
 actor GoogleSession: LLMSession {
 
-    // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
-
-    typealias Message = LLMMessage
-    typealias ToolDefinition = LLMToolDefinition
-    typealias ToolCall = LLMToolCall
-    typealias StreamEvent = LLMStreamEvent
-    typealias ProviderError = LLMProviderError
-
     // MARK: - Constants
 
     private static let baseURL = "https://generativelanguage.googleapis.com/v1beta"
@@ -40,7 +32,7 @@ actor GoogleSession: LLMSession {
     /// Creates a new session targeting the Google Gemini API.
     ///
     /// - Parameters:
-    ///   - apiKey: The Gemini API key (passed as a query parameter).
+    ///   - apiKey: The Gemini API key (sent via the x-goog-api-key header).
     ///   - model: The model identifier (e.g. `gemini-2.0-flash`).
     ///   - instructions: Optional system instructions prepended to every request.
     init(
@@ -58,14 +50,14 @@ actor GoogleSession: LLMSession {
 
     /// Sends a generate-content request and returns the full response text.
     func complete(
-        messages: [Message],
+        messages: [LLMMessage],
         temperature: Double = 0.1,
         maxTokens: Int? = nil
     ) async throws -> String {
         let endpoint = "\(Self.baseURL)/models/\(model):generateContent"
 
         guard let url = URL(string: endpoint) else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         var request = URLRequest(url: url)
@@ -80,23 +72,22 @@ actor GoogleSession: LLMSession {
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         if httpResponse.statusCode == 429 {
-            throw ProviderError.rateLimited
+            throw LLMProviderError.rateLimited
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw ProviderError.requestFailed(httpResponse.statusCode)
+            throw LLMProviderError.requestFailed(httpResponse.statusCode)
         }
 
         let json: Any
         do {
             json = try JSONSerialization.jsonObject(with: data)
         } catch {
-            print("[GoogleSession] Failed to parse API response as JSON")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         guard let dict = json as? [String: Any],
@@ -107,11 +98,9 @@ actor GoogleSession: LLMSession {
               let text = parts.first?["text"] as? String else {
             if let dict = json as? [String: Any], let errorObj = dict["error"] as? [String: Any] {
                 let msg = errorObj["message"] as? String ?? "Unknown API error"
-                print("[GoogleSession] API error: \(msg)")
-                throw ProviderError.requestFailed(-1)
+                throw LLMProviderError.apiError(msg)
             }
-            print("[GoogleSession] Unexpected response structure")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         return text
@@ -121,12 +110,16 @@ actor GoogleSession: LLMSession {
 
     /// Sends a streaming generate-content request and returns an async stream of events.
     func streamComplete(
-        messages: [Message],
-        tools: [ToolDefinition] = [],
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition] = [],
         temperature: Double = 0.3,
         maxTokens: Int? = nil
-    ) -> AsyncStream<StreamEvent> {
-        // TODO: Add tool calling support for Gemini native function calling format
+    ) -> AsyncStream<LLMStreamEvent> {
+        // TODO: [HIGH] Add tool calling support for Gemini native function calling format.
+        // Currently, the `tools` parameter is silently ignored, breaking ChatEngine tool workflows.
+        if !tools.isEmpty {
+            print("[GoogleSession] Warning: tool calling not yet supported for Gemini; \(tools.count) tool(s) will be ignored")
+        }
         let body = buildRequestBody(messages: messages, temperature: temperature, maxTokens: maxTokens)
         let endpoint = "\(Self.baseURL)/models/\(model):streamGenerateContent?alt=sse"
         let urlSession = self.session
@@ -146,7 +139,7 @@ actor GoogleSession: LLMSession {
         request.timeoutInterval = 120
         request.httpBody = httpBody
 
-        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
+        let (stream, continuation) = AsyncStream.makeStream(of: LLMStreamEvent.self)
 
         Task.detached {
             do {
@@ -214,9 +207,9 @@ actor GoogleSession: LLMSession {
 
     // MARK: - Helpers
 
-    /// Builds the Gemini request body from OpenAI-style messages.
+    /// Builds the Gemini request body from LLMMessage array.
     private func buildRequestBody(
-        messages: [Message],
+        messages: [LLMMessage],
         temperature: Double,
         maxTokens: Int?
     ) -> [String: Any] {
@@ -241,30 +234,30 @@ actor GoogleSession: LLMSession {
         return body
     }
 
-    /// Converts OpenAI-style messages to the Gemini contents/systemInstruction format.
+    /// Converts LLMMessage array to the Gemini contents/systemInstruction format.
     ///
     /// - System messages are extracted into `systemInstruction`.
     /// - User and assistant messages are mapped to `"user"` and `"model"` roles respectively.
+    /// - Tool result messages are converted to user messages (Gemini has no native tool role).
     private func convertMessages(
-        _ messages: [Message]
+        _ messages: [LLMMessage]
     ) -> (contents: [[String: Any]], systemInstruction: [String: Any]?) {
         var contents: [[String: Any]] = []
         var systemParts: [String] = []
 
         for message in messages {
-            let text = Self.extractText(from: message)
-
             switch message.role {
-            case "system":
-                if let text {
+            case .system:
+                if let text = message.text {
                     systemParts.append(text)
                 }
-            case "user":
-                contents.append(["role": "user", "parts": [["text": text ?? ""]]])
-            case "assistant":
-                contents.append(["role": "model", "parts": [["text": text ?? ""]]])
-            default:
-                break
+            case .user:
+                contents.append(["role": "user", "parts": [["text": message.text ?? ""]]])
+            case .assistant:
+                contents.append(["role": "model", "parts": [["text": message.text ?? ""]]])
+            case .tool:
+                let text = message.text ?? ""
+                contents.append(["role": "user", "parts": [["text": "[Tool Result] \(text)"]]])
             }
         }
 
@@ -282,15 +275,5 @@ actor GoogleSession: LLMSession {
         }
 
         return (contents, systemInstruction)
-    }
-
-    /// Extracts the plain-text content from a message, ignoring image parts.
-    private static func extractText(from message: Message) -> String? {
-        switch message.content {
-        case .text(let string):
-            return string
-        case .parts(let parts):
-            return parts.compactMap(\.text).joined(separator: "\n")
-        }
     }
 }

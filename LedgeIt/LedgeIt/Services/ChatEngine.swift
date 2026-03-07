@@ -38,11 +38,14 @@ actor ChatEngine {
         conversationHistory.removeAll()
     }
 
-    func restoreMessage(role: String, content: String) {
-        if role == "user" {
+    func restoreMessage(role: LLMMessage.Role, content: String) {
+        switch role {
+        case .user:
             conversationHistory.append(.user(content))
-        } else {
+        case .assistant:
             conversationHistory.append(.assistant(content))
+        default:
+            break
         }
     }
 
@@ -63,7 +66,7 @@ actor ChatEngine {
             let systemPrompt = try await buildSystemPrompt()
 
             // Create session via SessionFactory (instructions not passed here;
-            // system prompt is included directly in rawMessages for tool-calling support)
+            // system prompt is included directly in messages for tool-calling support)
             let config = AIProviderConfigStore.load()
             let session = try SessionFactory.makeSession(
                 assignment: config.chat,
@@ -446,11 +449,20 @@ actor ChatEngine {
     // MARK: - Argument Parsing
 
     private func parseArguments(_ jsonString: String) -> [String: Any] {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = jsonString.data(using: .utf8) else {
+            chatLogger.warning("Tool arguments not valid UTF-8: \(jsonString.prefix(200))")
             return [:]
         }
-        return json
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                chatLogger.warning("Tool arguments not a JSON object: \(jsonString.prefix(200))")
+                return [:]
+            }
+            return json
+        } catch {
+            chatLogger.warning("Tool arguments JSON parse failed: \(error.localizedDescription), raw: \(jsonString.prefix(200))")
+            return [:]
+        }
     }
 
     // MARK: - Result Formatting

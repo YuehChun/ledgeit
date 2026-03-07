@@ -32,7 +32,7 @@ final class ChatSessionManager: ObservableObject {
                 await chatEngine.clearHistory()
                 for msg in messages where msg.role == .user || msg.role == .assistant {
                     await chatEngine.restoreMessage(
-                        role: msg.role == .user ? "user" : "assistant",
+                        role: msg.role == .user ? .user : .assistant,
                         content: msg.content
                     )
                 }

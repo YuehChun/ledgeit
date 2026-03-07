@@ -42,7 +42,10 @@ enum AIProviderConfigStore {
         }
 
         var config = AIProviderConfiguration.default
-        let openRouterEndpoint = config.endpoints.first(where: { $0.name == "OpenRouter" })!
+        guard let openRouterEndpoint = config.endpoints.first(where: { $0.name == "OpenRouter" }) else {
+            configLogger.error("Migration failed: OpenRouter endpoint not found in default presets")
+            return nil
+        }
 
         // Save the OpenRouter API key to the endpoint keychain slot
         do {

@@ -16,12 +16,6 @@ import Foundation
 /// ```
 actor AnthropicSession: LLMSession {
 
-    typealias Message = LLMMessage
-    typealias ToolDefinition = LLMToolDefinition
-    typealias ToolCall = LLMToolCall
-    typealias StreamEvent = LLMStreamEvent
-    typealias ProviderError = LLMProviderError
-
     // MARK: - Constants
 
     private static let baseURL = "https://api.anthropic.com/v1/messages"
@@ -45,12 +39,12 @@ actor AnthropicSession: LLMSession {
     // MARK: - Non-Streaming API
 
     func complete(
-        messages: [Message],
+        messages: [LLMMessage],
         temperature: Double = 0.1,
         maxTokens: Int? = nil
     ) async throws -> String {
         guard let url = URL(string: Self.baseURL) else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         var request = URLRequest(url: url)
@@ -71,21 +65,20 @@ actor AnthropicSession: LLMSession {
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
         if httpResponse.statusCode == 429 {
-            throw ProviderError.rateLimited
+            throw LLMProviderError.rateLimited
         }
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw ProviderError.requestFailed(httpResponse.statusCode)
+            throw LLMProviderError.requestFailed(httpResponse.statusCode)
         }
 
         let json: Any
         do {
             json = try JSONSerialization.jsonObject(with: data)
         } catch {
-            print("[AnthropicSession] Failed to parse API response as JSON")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         guard let dict = json as? [String: Any],
@@ -95,11 +88,9 @@ actor AnthropicSession: LLMSession {
             if let dict = json as? [String: Any],
                let errorObj = dict["error"] as? [String: Any] {
                 let msg = errorObj["message"] as? String ?? "Unknown API error"
-                print("[AnthropicSession] API error: \(msg)")
-                throw ProviderError.requestFailed(-1)
+                throw LLMProviderError.apiError(msg)
             }
-            print("[AnthropicSession] Unexpected response structure")
-            throw ProviderError.invalidResponse
+            throw LLMProviderError.invalidResponse
         }
 
         return text
@@ -108,11 +99,11 @@ actor AnthropicSession: LLMSession {
     // MARK: - Streaming API
 
     func streamComplete(
-        messages: [Message],
-        tools: [ToolDefinition] = [],
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition] = [],
         temperature: Double = 0.3,
         maxTokens: Int? = nil
-    ) -> AsyncStream<StreamEvent> {
+    ) -> AsyncStream<LLMStreamEvent> {
         guard let url = URL(string: Self.baseURL) else {
             return AsyncStream { $0.yield(.error("Invalid URL")); $0.finish() }
         }
@@ -138,7 +129,7 @@ actor AnthropicSession: LLMSession {
         request.httpBody = httpBody
 
         let urlSession = self.session
-        let (stream, continuation) = AsyncStream.makeStream(of: StreamEvent.self)
+        let (stream, continuation) = AsyncStream.makeStream(of: LLMStreamEvent.self)
 
         Task.detached {
             do {
@@ -160,7 +151,7 @@ actor AnthropicSession: LLMSession {
                 var currentToolId = ""
                 var currentToolName = ""
                 var currentToolArgs = ""
-                var pendingToolCalls: [ToolCall] = []
+                var pendingToolCalls: [LLMToolCall] = []
 
                 for try await line in bytes.lines {
                     guard line.hasPrefix("data: ") else { continue }
@@ -206,7 +197,7 @@ actor AnthropicSession: LLMSession {
 
                     case "content_block_stop":
                         if !currentToolName.isEmpty {
-                            pendingToolCalls.append(ToolCall(
+                            pendingToolCalls.append(LLMToolCall(
                                 id: currentToolId,
                                 name: currentToolName,
                                 arguments: currentToolArgs
@@ -243,8 +234,8 @@ actor AnthropicSession: LLMSession {
     // MARK: - Request Body Builder
 
     private func buildRequestBody(
-        messages: [Message],
-        tools: [ToolDefinition] = [],
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition] = [],
         temperature: Double,
         maxTokens: Int,
         stream: Bool
@@ -284,7 +275,7 @@ actor AnthropicSession: LLMSession {
     /// - Tool results are sent as user messages with `tool_result` content blocks
     /// - Assistant tool calls are sent as `tool_use` content blocks
     private func convertMessages(
-        _ messages: [Message]
+        _ messages: [LLMMessage]
     ) -> (messages: [[String: Any]], system: String?) {
         var result: [[String: Any]] = []
         var systemParts: [String] = []
@@ -296,12 +287,12 @@ actor AnthropicSession: LLMSession {
 
         for msg in messages {
             switch msg.role {
-            case "system":
+            case .system:
                 if case .text(let text) = msg.content {
                     systemParts.append(text)
                 }
 
-            case "assistant":
+            case .assistant:
                 if let toolCalls = msg.toolCalls, !toolCalls.isEmpty {
                     var content: [[String: Any]] = []
                     if case .text(let text) = msg.content, !text.isEmpty {
@@ -323,12 +314,12 @@ actor AnthropicSession: LLMSession {
                     }
                     result.append(["role": "assistant", "content": content])
                 } else {
-                    let text = Self.extractText(from: msg) ?? ""
+                    let text = msg.text ?? ""
                     result.append(["role": "assistant", "content": text])
                 }
 
-            case "tool":
-                let text = Self.extractText(from: msg) ?? ""
+            case .tool:
+                let text = msg.text ?? ""
                 let toolResultContent: [String: Any] = [
                     "type": "tool_result",
                     "tool_use_id": msg.toolCallId ?? "",
@@ -344,12 +335,9 @@ actor AnthropicSession: LLMSession {
                     result.append(["role": "user", "content": [toolResultContent]])
                 }
 
-            case "user":
-                let text = Self.extractText(from: msg) ?? ""
+            case .user:
+                let text = msg.text ?? ""
                 result.append(["role": "user", "content": text])
-
-            default:
-                break
             }
         }
 
@@ -357,10 +345,4 @@ actor AnthropicSession: LLMSession {
         return (result, systemText)
     }
 
-    private static func extractText(from message: Message) -> String? {
-        switch message.content {
-        case .text(let string): return string
-        case .parts(let parts): return parts.compactMap(\.text).joined(separator: "\n")
-        }
-    }
 }
