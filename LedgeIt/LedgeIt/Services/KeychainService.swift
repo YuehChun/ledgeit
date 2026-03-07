@@ -241,7 +241,7 @@ enum KeychainService: Sendable {
             kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
-        cache.setRaw(account: account, value: "")
+        cache.removeRaw(account: account)
     }
 
     // MARK: - Per-Endpoint API Key Storage
@@ -319,6 +319,12 @@ private final class CredentialCache: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         rawStorage[account] = value
+    }
+
+    func removeRaw(account: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        rawStorage.removeValue(forKey: account)
     }
 
     func clear() {

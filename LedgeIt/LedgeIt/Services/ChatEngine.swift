@@ -62,12 +62,12 @@ actor ChatEngine {
             // Build system prompt with current financial snapshot
             let systemPrompt = try await buildSystemPrompt()
 
-            // Create session via SessionFactory
+            // Create session via SessionFactory (instructions not passed here;
+            // system prompt is included directly in rawMessages for tool-calling support)
             let config = AIProviderConfigStore.load()
             let session = try SessionFactory.makeSession(
                 assignment: config.chat,
-                config: config,
-                instructions: systemPrompt
+                config: config
             )
 
             // Signal message started

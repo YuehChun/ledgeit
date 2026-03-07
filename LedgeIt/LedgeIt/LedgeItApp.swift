@@ -7,6 +7,8 @@ struct LedgeItApp: App {
     init() {
         // Single Keychain read at startup to avoid multiple macOS password prompts
         KeychainService.preload()
+        // Migrate legacy OpenRouter config to multi-provider format
+        AIProviderConfigStore.migrateFromLegacy()
     }
 
     var body: some Scene {

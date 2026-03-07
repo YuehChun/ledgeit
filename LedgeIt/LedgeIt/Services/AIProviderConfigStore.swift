@@ -1,19 +1,29 @@
 import Foundation
+import os.log
+
+private let configLogger = Logger(subsystem: "com.ledgeit.app", category: "AIProviderConfigStore")
 
 enum AIProviderConfigStore {
     private static let key = "aiProviderConfiguration"
 
     static func load() -> AIProviderConfiguration {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let config = try? JSONDecoder().decode(AIProviderConfiguration.self, from: data) else {
+        guard let data = UserDefaults.standard.data(forKey: key) else {
             return .default
         }
-        return config
+        do {
+            return try JSONDecoder().decode(AIProviderConfiguration.self, from: data)
+        } catch {
+            configLogger.error("Failed to decode saved AI provider config: \(error.localizedDescription). Returning defaults.")
+            return .default
+        }
     }
 
     static func save(_ config: AIProviderConfiguration) {
-        if let data = try? JSONEncoder().encode(config) {
+        do {
+            let data = try JSONEncoder().encode(config)
             UserDefaults.standard.set(data, forKey: key)
+        } catch {
+            configLogger.error("Failed to encode AI provider config: \(error.localizedDescription)")
         }
     }
 
@@ -35,10 +45,15 @@ enum AIProviderConfigStore {
         let openRouterEndpoint = config.endpoints.first(where: { $0.name == "OpenRouter" })!
 
         // Save the OpenRouter API key to the endpoint keychain slot
-        try? KeychainService.saveEndpointAPIKey(
-            endpointId: openRouterEndpoint.id,
-            value: openRouterKey
-        )
+        do {
+            try KeychainService.saveEndpointAPIKey(
+                endpointId: openRouterEndpoint.id,
+                value: openRouterKey
+            )
+        } catch {
+            configLogger.error("Migration failed to save OpenRouter API key: \(error.localizedDescription)")
+            return nil
+        }
 
         // Map existing model selections from legacy UserDefaults keys
         let legacyKeys: [(String, WritableKeyPath<AIProviderConfiguration, ModelAssignment>)] = [
@@ -55,6 +70,7 @@ enum AIProviderConfigStore {
         }
 
         save(config)
+        configLogger.info("Successfully migrated legacy OpenRouter config")
         return config
     }
 }

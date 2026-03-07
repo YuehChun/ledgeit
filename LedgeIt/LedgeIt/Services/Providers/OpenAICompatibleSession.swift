@@ -20,8 +20,6 @@ actor OpenAICompatibleSession {
     // MARK: - Type Aliases (backed by top-level LLM types in LLMTypes.swift)
 
     typealias Message = LLMMessage
-    typealias MessageContent = LLMMessage.LLMMessageContent
-    typealias ContentPart = LLMContentPart
     typealias ToolDefinition = LLMToolDefinition
     typealias ToolCall = LLMToolCall
     typealias StreamEvent = LLMStreamEvent
@@ -85,9 +83,15 @@ actor OpenAICompatibleSession {
         }
         request.timeoutInterval = 180
 
+        // Prepend system instructions if provided
+        var allMessages = messages
+        if !instructions.isEmpty {
+            allMessages.insert(.system(instructions), at: 0)
+        }
+
         var body: [String: Any] = [
             "model": model,
-            "messages": Self.serializeMessages(messages),
+            "messages": Self.serializeMessages(allMessages),
             "temperature": temperature
         ]
         if let maxTokens {
@@ -239,9 +243,21 @@ actor OpenAICompatibleSession {
                         return
                     }
 
-                    guard let data = payload.data(using: .utf8),
-                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let choices = json["choices"] as? [[String: Any]],
+                    guard let data = payload.data(using: .utf8) else { continue }
+
+                    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        continue
+                    }
+
+                    // Check for error response before assuming normal structure
+                    if let error = json["error"] as? [String: Any] {
+                        let message = error["message"] as? String ?? "Unknown API error"
+                        continuation.yield(.error("Provider error: \(message)"))
+                        continuation.finish()
+                        return
+                    }
+
+                    guard let choices = json["choices"] as? [[String: Any]],
                           let delta = choices.first?["delta"] as? [String: Any] else {
                         continue
                     }

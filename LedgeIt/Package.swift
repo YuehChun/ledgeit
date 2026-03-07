@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "LedgeIt",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.0.16"),

@@ -62,7 +62,7 @@ actor GoogleSession {
         temperature: Double = 0.1,
         maxTokens: Int? = nil
     ) async throws -> String {
-        let endpoint = "\(Self.baseURL)/models/\(model):generateContent?key=\(apiKey)"
+        let endpoint = "\(Self.baseURL)/models/\(model):generateContent"
 
         guard let url = URL(string: endpoint) else {
             throw ProviderError.invalidResponse
@@ -71,6 +71,7 @@ actor GoogleSession {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.timeoutInterval = 180
 
         let body = buildRequestBody(messages: messages, temperature: temperature, maxTokens: maxTokens)
