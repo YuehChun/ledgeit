@@ -128,7 +128,7 @@ actor GoogleSession {
     ) -> AsyncStream<StreamEvent> {
         // TODO: Add tool calling support for Gemini native function calling format
         let body = buildRequestBody(messages: messages, temperature: temperature, maxTokens: maxTokens)
-        let endpoint = "\(Self.baseURL)/models/\(model):streamGenerateContent?alt=sse&key=\(apiKey)"
+        let endpoint = "\(Self.baseURL)/models/\(model):streamGenerateContent?alt=sse"
         let urlSession = self.session
 
         guard let url = URL(string: endpoint) else {
@@ -142,6 +142,7 @@ actor GoogleSession {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.timeoutInterval = 120
         request.httpBody = httpBody
 
@@ -175,8 +176,19 @@ actor GoogleSession {
                     }
 
                     guard let data = payload.data(using: .utf8),
-                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let candidates = json["candidates"] as? [[String: Any]],
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        continue
+                    }
+
+                    // Check for error response
+                    if let error = json["error"] as? [String: Any] {
+                        let message = error["message"] as? String ?? "Unknown API error"
+                        continuation.yield(.error("Provider error: \(message)"))
+                        continuation.finish()
+                        return
+                    }
+
+                    guard let candidates = json["candidates"] as? [[String: Any]],
                           let content = candidates.first?["content"] as? [String: Any],
                           let parts = content["parts"] as? [[String: Any]] else {
                         continue
