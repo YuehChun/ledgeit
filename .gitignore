@@ -55,3 +55,6 @@ logs/
 
 # Docker
 docker-compose.override.yml
+
+# AI
+.serena
