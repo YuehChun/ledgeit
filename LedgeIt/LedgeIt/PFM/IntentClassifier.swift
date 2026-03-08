@@ -45,7 +45,7 @@ struct IntentClassifier: Sendable {
         // Detect credit card statement emails
         let senderEmailLower = senderEmail.lowercased()
         let isTrustedBank = PFMConfig.trustedFinancialInstitutions.contains { domain in
-            senderEmailLower.contains(domain)
+            senderEmailLower.hasSuffix("@\(domain)") || senderEmailLower.hasSuffix(".\(domain)")
         }
         let combinedForStatement = (subject + " " + body).lowercased()
         let statementKeywords = [
@@ -137,7 +137,7 @@ struct IntentClassifier: Sendable {
 
         // Rule 1: Trusted financial institution + transaction keywords
         let isTrustedBank = PFMConfig.trustedFinancialInstitutions.contains { domain in
-            senderEmailLower.contains(domain)
+            senderEmailLower.hasSuffix("@\(domain)") || senderEmailLower.hasSuffix(".\(domain)")
         }
 
         if isTrustedBank {
@@ -174,7 +174,8 @@ struct IntentClassifier: Sendable {
         // Rule 3: Bank statement or account summary (excluding notifications)
         let statementNotificationKeywords = [
             "statement available", "statement is available",
-            "statement ready", "new statement", "latest statement"
+            "statement ready", "new statement", "latest statement",
+            "view your statement", "your statement is ready"
         ]
         let isStatementNotification = statementNotificationKeywords.contains { combinedText.contains($0) }
 
@@ -280,7 +281,7 @@ struct IntentClassifier: Sendable {
         }
 
         // Rule 10: Very long emails (typical promotional/newsletter)
-        if body.count > 10000 {
+        if body.count > 15000 {
             let legitimateLongKeywords = [
                 "statement", "summary", "report",
                 "booking confirmed", "booking confirmation",

@@ -14,7 +14,7 @@ struct TransactionReviewView: View {
     @State private var totalUnreviewed: Int = 0
 
     enum FilterMode: String, CaseIterable {
-        case unreviewed, reviewed, deleted, all
+        case unreviewed, needsReview, reviewed, deleted, all
     }
 
     var body: some View {
@@ -58,6 +58,7 @@ struct TransactionReviewView: View {
 
                 Picker("Filter", selection: $filterMode) {
                     Text(l10n.filterUnreviewed).tag(FilterMode.unreviewed)
+                    Text("Needs Review").tag(FilterMode.needsReview)
                     Text(l10n.filterReviewed).tag(FilterMode.reviewed)
                     Text(l10n.filterDeleted).tag(FilterMode.deleted)
                     Text(l10n.all).tag(FilterMode.all)
@@ -101,7 +102,8 @@ struct TransactionReviewView: View {
                                 onToggleExpand: { toggleExpand(group.id) },
                                 onMarkReviewed: { markEmailReviewed(group) },
                                 onDeleteTransaction: { tx in softDeleteTransaction(tx) },
-                                onRestoreTransaction: { tx in restoreTransaction(tx) }
+                                onRestoreTransaction: { tx in restoreTransaction(tx) },
+                                onCorrectType: { tx, newType in correctType(tx, to: newType) }
                             )
                         }
                     }
@@ -131,6 +133,11 @@ struct TransactionReviewView: View {
             case .unreviewed:
                 txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
                     .filter(Transaction.Columns.isReviewed == false)
+            case .needsReview:
+                txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
+                    .filter(Transaction.Columns.isReviewed == false)
+                    .filter(Transaction.Columns.extractionConfidence != nil)
+                    .filter(Transaction.Columns.extractionConfidence < 0.8)
             case .reviewed:
                 txQuery = txQuery.filter(Transaction.Columns.deletedAt == nil)
                     .filter(Transaction.Columns.isReviewed == true)
@@ -149,7 +156,9 @@ struct TransactionReviewView: View {
             }
 
             let transactions = try txQuery
-                .order(Transaction.Columns.transactionDate.desc)
+                .order(filter == .needsReview
+                    ? Transaction.Columns.extractionConfidence.asc
+                    : Transaction.Columns.transactionDate.desc)
                 .limit(500)
                 .fetchAll(db)
 
@@ -267,6 +276,22 @@ struct TransactionReviewView: View {
         }
     }
 
+    private func correctType(_ tx: Transaction, to newType: String) {
+        guard let id = tx.id else { return }
+        do {
+            try AppDatabase.shared.db.write { db in
+                try Transaction
+                    .filter(Transaction.Columns.id == id)
+                    .updateAll(db,
+                        Transaction.Columns.userCorrectedType.set(to: newType),
+                        Transaction.Columns.isReviewed.set(to: true)
+                    )
+            }
+        } catch {
+            print("Failed to correct type: \(error)")
+        }
+    }
+
     private func markAllReviewed() {
         do {
             try AppDatabase.shared.db.write { db in
@@ -310,6 +335,7 @@ private struct EmailGroupCard: View {
     let onMarkReviewed: () -> Void
     let onDeleteTransaction: (Transaction) -> Void
     let onRestoreTransaction: (Transaction) -> Void
+    let onCorrectType: (Transaction, String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -352,7 +378,8 @@ private struct EmailGroupCard: View {
                     l10n: l10n,
                     isDeletedView: isDeletedView,
                     onDelete: { onDeleteTransaction(tx) },
-                    onRestore: { onRestoreTransaction(tx) }
+                    onRestore: { onRestoreTransaction(tx) },
+                    onCorrectType: { tx, newType in onCorrectType(tx, newType) }
                 )
             }
 
@@ -407,6 +434,7 @@ private struct TransactionRow: View {
     let isDeletedView: Bool
     let onDelete: () -> Void
     let onRestore: () -> Void
+    let onCorrectType: (Transaction, String) -> Void
 
     private var daysLeft: Int? {
         guard let deletedAt = tx.deletedAt,
@@ -447,6 +475,19 @@ private struct TransactionRow: View {
                             .foregroundStyle(.green)
                             .background(.green.opacity(0.1), in: Capsule())
                     }
+                    if let conf = tx.extractionConfidence {
+                        let (color, label): (Color, String) = {
+                            if conf >= 0.8 { return (.green, "High") }
+                            if conf >= 0.5 { return (.yellow, "Med") }
+                            return (.red, "Low")
+                        }()
+                        Text(label)
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .foregroundStyle(color)
+                            .background(color.opacity(0.1), in: Capsule())
+                    }
                     if let days = daysLeft, isDeletedView {
                         Text(l10n.daysUntilPurge(days))
                             .font(.system(size: 9, weight: .medium))
@@ -462,6 +503,18 @@ private struct TransactionRow: View {
 
             AmountText(amount: tx.amount, currency: tx.currency, type: tx.type)
                 .opacity(isDeletedView ? 0.4 : 1)
+
+            Menu {
+                Button("Mark as Debit") { onCorrectType(tx, "debit") }
+                Button("Mark as Credit") { onCorrectType(tx, "credit") }
+                Button("Mark as Transfer") { onCorrectType(tx, "transfer") }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.blue)
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 24)
 
             // Action button
             if isDeletedView {

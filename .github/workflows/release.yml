@@ -1,0 +1,58 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Setup Swift
+        run: swift --version
+
+      - name: Build DMG
+        working-directory: LedgeIt
+        run: bash build.sh "${{ steps.version.outputs.version }}"
+
+      - name: Generate checksum
+        working-directory: LedgeIt/.build
+        run: |
+          shasum -a 256 "LedgeIt-${{ steps.version.outputs.version }}.dmg" > "LedgeIt-${{ steps.version.outputs.version }}.dmg.sha256"
+          cat "LedgeIt-${{ steps.version.outputs.version }}.dmg.sha256"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "LedgeIt v${{ steps.version.outputs.version }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            LedgeIt/.build/LedgeIt-${{ steps.version.outputs.version }}.dmg
+            LedgeIt/.build/LedgeIt-${{ steps.version.outputs.version }}.dmg.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

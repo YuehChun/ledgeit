@@ -4,6 +4,7 @@ enum CategoryGroup: String {
     case lifestyle
     case financial
     case commerce
+    case income
 }
 
 struct CategoryStyle {
@@ -57,6 +58,18 @@ struct CategoryStyle {
         case .transport:
             return CategoryStyle(displayName: "Transport", icon: "car.fill",
                                  color: Color(red: 0.20, green: 0.50, blue: 0.90), group: .commerce, isFinancialObligation: false)
+        case .salaryAndWages:
+            return CategoryStyle(displayName: "Salary & Wages", icon: "banknote.fill",
+                                 color: Color(red: 0.20, green: 0.78, blue: 0.35), group: .income, isFinancialObligation: false)
+        case .freelanceIncome:
+            return CategoryStyle(displayName: "Freelance Income", icon: "briefcase.fill",
+                                 color: Color(red: 0.25, green: 0.72, blue: 0.48), group: .income, isFinancialObligation: false)
+        case .investmentReturns:
+            return CategoryStyle(displayName: "Investment Returns", icon: "chart.line.uptrend.xyaxis",
+                                 color: Color(red: 0.90, green: 0.72, blue: 0.10), group: .income, isFinancialObligation: false)
+        case .refund:
+            return CategoryStyle(displayName: "Refund", icon: "arrow.uturn.backward.circle.fill",
+                                 color: Color(red: 0.40, green: 0.70, blue: 0.90), group: .income, isFinancialObligation: false)
         case .general:
             return CategoryStyle(displayName: "General", icon: "square.grid.2x2.fill",
                                  color: Color(red: 0.55, green: 0.55, blue: 0.58), group: .commerce, isFinancialObligation: false)
