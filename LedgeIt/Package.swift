@@ -7,6 +7,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.0.16"),
+        .package(url: "https://github.com/mattt/AnyLanguageModel", from: "0.7.0"),
     ],
     targets: [
         .target(
@@ -22,6 +23,7 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Embeddings", package: "swift-embeddings"),
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
                 "CSQLiteVec",
             ],
             path: "LedgeIt",
@@ -35,6 +37,7 @@ let package = Package(
             dependencies: [
                 "LedgeIt",
                 .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
             ],
             path: "Tests"
         ),

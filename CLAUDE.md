@@ -46,10 +46,10 @@ FinancialQueryService (shared query layer)
   ├──► ChatEngine + SessionFactory (streaming + tool calling) ──► ChatView
   └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
 
-AI Provider Layer (SessionFactory)
-  ├── OpenAICompatibleSession (OpenAI, OpenRouter, Ollama, Groq, etc.)
-  ├── AnthropicSession (direct Anthropic API)
-  ├── GoogleSession (Gemini API)
+AI Provider Layer (AnyLanguageModel + SessionFactory)
+  ├── OpenAILanguageModel (OpenAI, OpenRouter, Ollama, Groq, etc.)
+  ├── AnthropicLanguageModel (direct Anthropic API)
+  ├── GeminiLanguageModel (Google Gemini API)
   └── AIProviderConfigStore (UserDefaults + Keychain)
 ```
 
@@ -59,21 +59,26 @@ AI Provider Layer (SessionFactory)
 - Swift 6.2, SwiftUI, macOS 15+
 - Database: SQLite via GRDB 7.0
 - Secrets: macOS Keychain (API keys per provider, Google OAuth credentials)
-- LLM: Multi-provider via SessionFactory (OpenAI-compatible, Anthropic, Google Gemini)
+- LLM: Multi-provider via AnyLanguageModel + SessionFactory (OpenAI-compatible, Anthropic, Google Gemini)
 - Package Manager: Swift Package Manager
 
 ## AI Provider Architecture
 
-- **SessionFactory** creates the right session based on `AIProviderConfiguration`
-- **OpenAICompatibleSession** — supports any OpenAI API-compatible endpoint (configurable base URL + optional API key)
-- **GoogleSession** — Google Gemini API adapter
-- **AnthropicSession** — direct Anthropic Messages API adapter (`/v1/messages`)
-- **LLMSession** protocol — unified interface for all provider sessions (`complete`, `streamComplete`)
+- **AnyLanguageModel** (v0.7+) — third-party framework providing unified multi-provider LLM API
+- **SessionFactory** — creates `LanguageModelSession` instances based on `AIProviderConfiguration`
+  - `makeSession(assignment:config:tools:instructions:)` → `LanguageModelSession`
+  - `makeModel(assignment:config:)` → `any LanguageModel` (for custom session construction)
+- **LanguageModelSession** — AnyLanguageModel's session manager with automatic tool-calling loop and transcript management
+  - `session.respond(to:options:)` for text, `session.respond(to:image:options:)` for multimodal
+  - `session.streamResponse(to:)` for streaming
+  - `GenerationOptions(temperature:)` for temperature control
+- **Tool protocol + @Generable macro** — type-safe tool definitions (see `LedgeIt/Services/Tools/`)
+- **DynamicTool** — runtime tool definitions using `DynamicGenerationSchema` for plugin-style registration
+- **ChatToolExecutionDelegate** — observes tool calls for `.toolCallStarted` events in ChatEngine
 - **AIProviderConfigStore** — persists provider config in UserDefaults, API keys in Keychain
-- **LLMTypes.swift** — shared types: `LLMMessage`, `LLMToolDefinition`, `LLMToolCall`, `LLMStreamEvent`
 - Users can add multiple OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Groq, etc.)
 - Each use case (classification, extraction, statement, chat) can use a different provider + model
 
 ## Key Dependencies
 
-**Swift**: GRDB 7.0 (SQLite), swift-embeddings (ML embeddings), Google OAuth 2.0, Gmail API, Google Calendar API
+**Swift**: GRDB 7.0 (SQLite), swift-embeddings (ML embeddings), AnyLanguageModel 0.7+ (multi-provider LLM), Google OAuth 2.0, Gmail API, Google Calendar API

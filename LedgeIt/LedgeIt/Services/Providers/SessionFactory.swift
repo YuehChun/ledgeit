@@ -1,4 +1,5 @@
 import Foundation
+import AnyLanguageModel
 
 enum SessionFactory {
 
@@ -6,6 +7,7 @@ enum SessionFactory {
         case endpointNotFound(UUID)
         case missingEndpointId(provider: AIProvider)
         case missingAPIKey(provider: String)
+        case invalidEndpointURL(String)
 
         var errorDescription: String? {
             switch self {
@@ -15,21 +17,31 @@ enum SessionFactory {
                 return "Endpoint ID is required for provider: \(provider.rawValue)"
             case .missingAPIKey(let provider):
                 return "API key not configured for \(provider)"
+            case .invalidEndpointURL(let url):
+                return "Invalid endpoint URL: \(url)"
             }
         }
     }
 
-    /// Create a session for completions based on the model assignment.
-    ///
-    /// Returns the appropriate session type for the configured provider:
-    /// - `.openAICompatible` → `OpenAICompatibleSession` (OpenAI, OpenRouter, Ollama, Groq)
-    /// - `.anthropic` → `AnthropicSession` (direct Anthropic API)
-    /// - `.google` → `GoogleSession` (Google Gemini API)
+    /// Create a `LanguageModelSession` for the given assignment, with optional tools and instructions.
     static func makeSession(
         assignment: ModelAssignment,
         config: AIProviderConfiguration,
+        tools: [any Tool] = [],
         instructions: String = ""
-    ) throws -> any LLMSession {
+    ) throws -> LanguageModelSession {
+        let model = try makeModel(assignment: assignment, config: config)
+        return LanguageModelSession(model: model, tools: tools, instructions: instructions)
+    }
+
+    /// Create a bare `LanguageModel` (no session/transcript) for the given assignment.
+    ///
+    /// Use this when you need to construct a `LanguageModelSession` yourself
+    /// (e.g. with a pre-existing `Transcript`).
+    static func makeModel(
+        assignment: ModelAssignment,
+        config: AIProviderConfiguration
+    ) throws -> any LanguageModel {
         switch assignment.provider {
         case .openAICompatible:
             guard let endpointId = assignment.endpointId else {
@@ -44,32 +56,28 @@ enum SessionFactory {
             if endpoint.requiresAPIKey && apiKey == nil {
                 throw SessionError.missingAPIKey(provider: endpoint.name)
             }
-            return OpenAICompatibleSession(
-                baseURL: endpoint.baseURL,
-                apiKey: apiKey,
+            guard let baseURL = URL(string: endpoint.baseURL) else {
+                throw SessionError.invalidEndpointURL(endpoint.baseURL)
+            }
+            return OpenAILanguageModel(
+                baseURL: baseURL,
+                apiKey: apiKey ?? "",
                 model: assignment.model,
-                instructions: instructions
+                apiVariant: .chatCompletions
             )
 
         case .anthropic:
             guard let apiKey = KeychainService.load(key: .anthropicAPIKey) else {
                 throw SessionError.missingAPIKey(provider: "Anthropic")
             }
-            return AnthropicSession(
-                apiKey: apiKey,
-                model: assignment.model,
-                instructions: instructions
-            )
+            return AnthropicLanguageModel(apiKey: apiKey, model: assignment.model)
 
         case .google:
             guard let apiKey = KeychainService.load(key: .googleAIAPIKey) else {
                 throw SessionError.missingAPIKey(provider: "Google AI")
             }
-            return GoogleSession(
-                apiKey: apiKey,
-                model: assignment.model,
-                instructions: instructions
-            )
+            return GeminiLanguageModel(apiKey: apiKey, model: assignment.model)
         }
     }
+
 }

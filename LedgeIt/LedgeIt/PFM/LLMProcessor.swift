@@ -1,3 +1,4 @@
+import AnyLanguageModel
 import Foundation
 
 struct LLMProcessor: Sendable {
@@ -153,17 +154,15 @@ struct LLMProcessor: Sendable {
 
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.classification,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: PFMConfig.llmTemperature
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: PFMConfig.llmTemperature)
         )
 
-        return try parseJSON(response, as: ClassificationLLMResult.self)
+        return try parseJSON(response.content, as: ClassificationLLMResult.self)
     }
 
     // MARK: - Extraction
@@ -260,17 +259,15 @@ struct LLMProcessor: Sendable {
 
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: PFMConfig.llmTemperature
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: PFMConfig.llmTemperature)
         )
 
-        return try parseJSON(response, as: ExtractionResult.self)
+        return try parseJSON(response.content, as: ExtractionResult.self)
     }
 
     // MARK: - Credit Card Bill Extraction
@@ -316,17 +313,15 @@ struct LLMProcessor: Sendable {
 
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: PFMConfig.llmTemperature
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: PFMConfig.llmTemperature)
         )
 
-        return try parseJSON(response, as: BillExtractionResult.self)
+        return try parseJSON(response.content, as: BillExtractionResult.self)
     }
 
     // MARK: - Spending Analysis
@@ -395,41 +390,32 @@ struct LLMProcessor: Sendable {
 
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.classification,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: 0.3
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: 0.3)
         )
 
-        return try parseJSON(response, as: SpendingAnalysis.self)
+        return try parseJSON(response.content, as: SpendingAnalysis.self)
     }
 
     // MARK: - Vision / OCR
 
-    func extractFromImage(imageData: Data) async throws -> String {
-        let base64 = imageData.base64EncodedString()
-
-        let message = LLMMessage.userWithImage(
-            text: """
-            Extract all financial transaction information from this image. \
-            Include amounts, currencies, merchant names, dates, and transaction types. \
-            Return the extracted text in a structured format.
-            """,
-            imageBase64: base64
-        )
-
+    func extractFromImage(imageData: Data, mimeType: String = "image/png") async throws -> String {
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
-            config: providerConfig
+            config: providerConfig,
+            instructions: "You are a financial document OCR expert. Extract all transaction details from images."
         )
-        return try await session.complete(
-            messages: [message],
-            temperature: PFMConfig.llmTemperature
+        let image = Transcript.ImageSegment(data: imageData, mimeType: mimeType)
+        let response = try await session.respond(
+            to: "Extract all financial transaction information from this image. Include amounts, currencies, merchant names, dates, and transaction types. Return the extracted text in a structured format.",
+            image: image,
+            options: GenerationOptions(temperature: PFMConfig.llmTemperature)
         )
+        return response.content
     }
 
     // MARK: - JSON Parsing (robust)

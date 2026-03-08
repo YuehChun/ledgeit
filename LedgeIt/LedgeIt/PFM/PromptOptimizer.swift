@@ -1,4 +1,5 @@
 import Foundation
+import AnyLanguageModel
 
 struct PromptOptimizer: Sendable {
     let providerConfig: AIProviderConfiguration
@@ -78,17 +79,15 @@ struct PromptOptimizer: Sendable {
 
         let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: 0.3
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: 0.3)
         )
 
-        return try parseJSON(response)
+        return try parseJSON(response.content)
     }
 
     private func parseJSON(_ raw: String) throws -> OptimizedPrompt {
