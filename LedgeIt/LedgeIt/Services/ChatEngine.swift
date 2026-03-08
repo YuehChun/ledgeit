@@ -49,7 +49,7 @@ actor ChatEngine {
     ///
     /// Call this when loading persisted chat history so the session sees
     /// prior conversation context.
-    func restoreMessage(role: LLMMessage.Role, content: String) {
+    func restoreMessage(role: ChatMessage.ChatRole, content: String) {
         let currentSession = getOrCreateSession()
 
         let entry: Transcript.Entry
@@ -69,7 +69,7 @@ actor ChatEngine {
                     segments: [.text(.init(content: content))]
                 )
             )
-        default:
+        case .system:
             return
         }
 

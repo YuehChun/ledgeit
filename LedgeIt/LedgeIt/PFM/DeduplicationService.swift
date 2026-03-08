@@ -1,4 +1,5 @@
 import Foundation
+import AnyLanguageModel
 import GRDB
 
 /// Smart deduplication service using rule-based scoring + LLM tiebreaker.
@@ -253,7 +254,7 @@ struct DeduplicationService: Sendable {
 
     private func llmTiebreaker(new: Transaction, existing: Transaction) async throws -> LLMResult {
         let providerConfig = AIProviderConfigStore.load()
-        let session = try SessionFactory.makeLegacySession(
+        let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
             config: providerConfig
         )
@@ -266,13 +267,13 @@ struct DeduplicationService: Sendable {
             Answer ONLY in JSON: {"is_duplicate": true/false, "confidence": 0.0-1.0, "reason": "brief explanation"}
             """
 
-        let response = try await session.complete(
-            messages: [.user(prompt)],
-            temperature: 0.0
+        let response = try await session.respond(
+            to: prompt,
+            options: GenerationOptions(temperature: 0.0)
         )
 
         // Strip markdown code fences if present
-        var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.hasPrefix("```") {
             if let firstNewline = cleaned.firstIndex(of: "\n") {
                 cleaned = String(cleaned[cleaned.index(after: firstNewline)...])
@@ -286,7 +287,7 @@ struct DeduplicationService: Sendable {
         guard let data = cleaned.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let isDuplicate = json["is_duplicate"] as? Bool else {
-            return LLMResult(isDuplicate: false, confidence: 0, reason: "Failed to parse LLM response: \(response)")
+            return LLMResult(isDuplicate: false, confidence: 0, reason: "Failed to parse LLM response: \(response.content)")
         }
 
         let confidence = json["confidence"] as? Double ?? 0

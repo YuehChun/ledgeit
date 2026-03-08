@@ -1,3 +1,4 @@
+import AnyLanguageModel
 import Foundation
 
 struct PDFExtractor: Sendable {
@@ -104,19 +105,17 @@ struct PDFExtractor: Sendable {
         - If no transactions found, return empty transactions array
         """
 
-        let session = try SessionFactory.makeLegacySession(
+        let session = try SessionFactory.makeSession(
             assignment: llmProcessor.providerConfig.extraction,
-            config: llmProcessor.providerConfig
+            config: llmProcessor.providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: PFMConfig.llmTemperature
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: PFMConfig.llmTemperature)
         )
 
-        return try parseJSON(response)
+        return try parseJSON(response.content)
     }
 
     /// Multi-layer extraction for credit card statements.
@@ -155,17 +154,16 @@ struct PDFExtractor: Sendable {
         }
         """
 
-        let classifySession = try SessionFactory.makeLegacySession(
+        let classifySession = try SessionFactory.makeSession(
             assignment: llmProcessor.providerConfig.classification,
-            config: llmProcessor.providerConfig
+            config: llmProcessor.providerConfig,
+            instructions: "You are a financial document classifier. Return ONLY valid JSON."
         )
-        let classifyResponse = try await classifySession.complete(
-            messages: [
-                .system("You are a financial document classifier. Return ONLY valid JSON."),
-                .user(classifyPrompt)
-            ],
-            temperature: 0.0
+        let classifyResult = try await classifySession.respond(
+            to: classifyPrompt,
+            options: GenerationOptions(temperature: 0.0)
         )
+        let classifyResponse = classifyResult.content
 
         // Parse classification — prefer LLM-detected issuer over password hint
         var detectedCurrency = "TWD"
@@ -244,19 +242,17 @@ struct PDFExtractor: Sendable {
         - If payment info is not found, set payment_summary to null
         """
 
-        let statementSession = try SessionFactory.makeLegacySession(
+        let statementSession = try SessionFactory.makeSession(
             assignment: llmProcessor.providerConfig.statement,
-            config: llmProcessor.providerConfig
+            config: llmProcessor.providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await statementSession.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: 0.05
+        let response = try await statementSession.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: 0.05)
         )
 
-        return try parseJSON(response)
+        return try parseJSON(response.content)
     }
 
     // Classification helper

@@ -1,4 +1,5 @@
 import Foundation
+import AnyLanguageModel
 import GRDB
 
 struct GoalPlanner: Sendable {
@@ -135,19 +136,17 @@ struct GoalPlanner: Sendable {
         - LANGUAGE: All user-facing text (title, description, reasoning) MUST be written in \(languageName)
         """
 
-        let session = try SessionFactory.makeLegacySession(
+        let session = try SessionFactory.makeSession(
             assignment: providerConfig.extraction,
-            config: providerConfig
+            config: providerConfig,
+            instructions: systemPrompt
         )
-        let response = try await session.complete(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt)
-            ],
-            temperature: 0.3
+        let response = try await session.respond(
+            to: userPrompt,
+            options: GenerationOptions(temperature: 0.3)
         )
 
-        return try parseJSON(response)
+        return try parseJSON(response.content)
     }
 
     // MARK: - Save Goals to DB
