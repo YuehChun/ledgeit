@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OnboardingChatView: View {
-    @ObservedObject var viewModel: OnboardingViewModel
+    @StateObject var viewModel: OnboardingViewModel = OnboardingViewModel()
     @State private var inputText = ""
 
     var body: some View {

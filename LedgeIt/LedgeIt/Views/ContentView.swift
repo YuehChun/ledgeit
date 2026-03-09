@@ -37,7 +37,7 @@ struct ContentView: View {
     @State private var selectedItem: SidebarItem? = .dashboard
     @AppStorage("appLanguage") private var appLanguage = "en"
     private var l10n: L10n { L10n(appLanguage) }
-    @State private var hasApiKeys = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var autoSyncStatus: String?
     @State private var syncTimer: Timer?
 
@@ -93,8 +93,8 @@ struct ContentView: View {
             }
         } detail: {
             Group {
-                if !hasApiKeys && selectedItem != .settings {
-                    OnboardingView(onGoToSettings: { selectedItem = .settings })
+                if !hasCompletedOnboarding {
+                    OnboardingChatView()
                 } else {
                     switch selectedItem {
                     case .dashboard:
@@ -119,7 +119,6 @@ struct ContentView: View {
                         GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
                     case .settings:
                         SettingsView(onKeySaved: {
-                            checkApiKeys()
                             triggerAutoSync()
                         })
                     case nil:
@@ -131,7 +130,6 @@ struct ContentView: View {
         }
         .frame(minWidth: 960, minHeight: 640)
         .onAppear {
-            checkApiKeys()
             triggerAutoSync()
             startSyncTimer()
         }
@@ -146,12 +144,6 @@ struct ContentView: View {
                 .frame(width: 20)
             Text(title)
         }
-    }
-
-    private func checkApiKeys() {
-        let clientId = KeychainService.load(key: .googleClientID) ?? ""
-        let clientSecret = KeychainService.load(key: .googleClientSecret) ?? ""
-        hasApiKeys = !clientId.isEmpty && !clientSecret.isEmpty
     }
 
     private func startSyncTimer() {
@@ -208,84 +200,5 @@ struct ContentView: View {
         }
 
         autoSyncStatus = nil
-    }
-}
-
-// MARK: - Onboarding View
-
-struct OnboardingView: View {
-    var onGoToSettings: () -> Void
-    @AppStorage("appLanguage") private var appLanguage = "en"
-    private var l10n: L10n { L10n(appLanguage) }
-
-    var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            Image(systemName: "wallet.bifold.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.blue.gradient)
-
-            VStack(spacing: 8) {
-                Text(l10n.welcomeTitle)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
-                Text(l10n.welcomeSubtitle)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                FeatureRow(icon: "envelope.open.fill", color: .blue,
-                           title: l10n.gmailIntegration,
-                           subtitle: l10n.gmailIntegrationDesc)
-                FeatureRow(icon: "brain.head.profile.fill", color: .purple,
-                           title: l10n.aiExtraction,
-                           subtitle: l10n.aiExtractionDesc)
-                FeatureRow(icon: "chart.pie.fill", color: .orange,
-                           title: l10n.financialDashboard,
-                           subtitle: l10n.financialDashboardDesc)
-                FeatureRow(icon: "calendar.badge.clock", color: .green,
-                           title: l10n.paymentCalendar,
-                           subtitle: l10n.paymentCalendarDesc)
-            }
-            .frame(maxWidth: 380)
-
-            Button(action: onGoToSettings) {
-                Label(l10n.getStarted, systemImage: "arrow.right.circle.fill")
-                    .frame(maxWidth: 260)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct FeatureRow: View {
-    let icon: String
-    let color: Color
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-                .frame(width: 32)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }
