@@ -74,8 +74,12 @@ struct FormCardView: View {
                 switch newValue {
                 case "OpenRouter":
                     viewModel.apiKeyEndpointURL = "https://openrouter.ai/api/v1"
+                    viewModel.apiKeyModel = "anthropic/claude-sonnet-4-6"
                 case "OpenAI":
                     viewModel.apiKeyEndpointURL = "https://api.openai.com/v1"
+                    viewModel.apiKeyModel = "gpt-4o-mini"
+                case "Custom":
+                    viewModel.apiKeyModel = ""
                 default:
                     break
                 }
@@ -85,6 +89,9 @@ struct FormCardView: View {
                 TextField("Endpoint URL", text: $viewModel.apiKeyEndpointURL)
                     .textFieldStyle(.roundedBorder)
             }
+
+            TextField(localizedTitle("Model", zh: "\u{6A21}\u{578B}"), text: $viewModel.apiKeyModel)
+                .textFieldStyle(.roundedBorder)
 
             SecureField("API Key", text: $viewModel.apiKeyValue)
                 .textFieldStyle(.roundedBorder)
@@ -195,10 +202,17 @@ struct FormCardView: View {
             Text(localizedTitle("Financial Suggestions", zh: "\u{8CA1}\u{52D9}\u{5EFA}\u{8B70}"))
                 .font(.headline)
 
-            Button(localizedTitle("Yes, generate suggestions", zh: "\u{662F}\u{7684}\u{FF0C}\u{751F}\u{6210}\u{5EFA}\u{8B70}")) {
-                Task { await viewModel.confirmSuggestions() }
+            HStack(spacing: 12) {
+                Button(localizedTitle("No thanks", zh: "\u{4E0D}\u{7528}\u{4E86}")) {
+                    Task { await viewModel.skipSuggestions() }
+                }
+                .buttonStyle(.bordered)
+
+                Button(localizedTitle("Yes, generate suggestions", zh: "\u{662F}\u{7684}\u{FF0C}\u{751F}\u{6210}\u{5EFA}\u{8B70}")) {
+                    Task { await viewModel.confirmSuggestions() }
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
     }
 

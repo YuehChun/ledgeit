@@ -44,97 +44,96 @@ struct ContentView: View {
     private let autoSyncInterval: TimeInterval = 15 * 60 // 15 minutes
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedItem) {
-                Section(l10n.overview) {
-                    sidebarRow(l10n.dashboard, icon: SidebarItem.dashboard.icon)
-                        .tag(SidebarItem.dashboard)
-                    sidebarRow(l10n.chat, icon: SidebarItem.chat.icon)
-                        .tag(SidebarItem.chat)
-                }
-                Section(l10n.data) {
-                    sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
-                        .tag(SidebarItem.transactions)
-                    sidebarRow(l10n.review, icon: SidebarItem.review.icon)
-                        .tag(SidebarItem.review)
-                    sidebarRow(l10n.emails, icon: SidebarItem.emails.icon)
-                        .tag(SidebarItem.emails)
-                    sidebarRow(l10n.calendar, icon: SidebarItem.calendar.icon)
-                        .tag(SidebarItem.calendar)
-                    sidebarRow(l10n.statementsSidebar, icon: SidebarItem.statements.icon)
-                        .tag(SidebarItem.statements)
-                }
-                Section(l10n.analysisSection) {
-                    sidebarRow(l10n.analysis, icon: SidebarItem.analysis.icon)
-                        .tag(SidebarItem.analysis)
-                    sidebarRow(l10n.goals, icon: SidebarItem.goals.icon)
-                        .tag(SidebarItem.goals)
-                }
-                Section {
-                    sidebarRow(l10n.settings, icon: SidebarItem.settings.icon)
-                        .tag(SidebarItem.settings)
-                    sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
-                        .tag(SidebarItem.advisor)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .listStyle(.sidebar)
-
-            if let status = autoSyncStatus {
-                HStack(spacing: 4) {
-                    ProgressView().controlSize(.mini)
-                    Text(status)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
-        } detail: {
-            Group {
-                if !hasCompletedOnboarding {
-                    OnboardingChatView()
-                } else {
-                    switch selectedItem {
-                    case .dashboard:
-                        DashboardView()
-                    case .chat:
-                        ChatView()
-                    case .transactions:
-                        TransactionListView()
-                    case .review:
-                        TransactionReviewView()
-                    case .emails:
-                        EmailListView()
-                    case .calendar:
-                        CalendarView()
-                    case .statements:
-                        StatementsView()
-                    case .analysis:
-                        AnalysisDashboardView()
-                    case .advisor:
-                        AdvisorSettingsView()
-                    case .goals:
-                        GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
-                    case .settings:
-                        SettingsView(onKeySaved: {
-                            triggerAutoSync()
-                        })
-                    case nil:
-                        Text("Select an item from the sidebar")
-                            .foregroundStyle(.secondary)
+        if !hasCompletedOnboarding {
+            OnboardingChatView()
+                .frame(minWidth: 960, minHeight: 640)
+        } else {
+            NavigationSplitView {
+                List(selection: $selectedItem) {
+                    Section(l10n.overview) {
+                        sidebarRow(l10n.dashboard, icon: SidebarItem.dashboard.icon)
+                            .tag(SidebarItem.dashboard)
+                        sidebarRow(l10n.chat, icon: SidebarItem.chat.icon)
+                            .tag(SidebarItem.chat)
+                    }
+                    Section(l10n.data) {
+                        sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
+                            .tag(SidebarItem.transactions)
+                        sidebarRow(l10n.review, icon: SidebarItem.review.icon)
+                            .tag(SidebarItem.review)
+                        sidebarRow(l10n.emails, icon: SidebarItem.emails.icon)
+                            .tag(SidebarItem.emails)
+                        sidebarRow(l10n.calendar, icon: SidebarItem.calendar.icon)
+                            .tag(SidebarItem.calendar)
+                        sidebarRow(l10n.statementsSidebar, icon: SidebarItem.statements.icon)
+                            .tag(SidebarItem.statements)
+                    }
+                    Section(l10n.analysisSection) {
+                        sidebarRow(l10n.analysis, icon: SidebarItem.analysis.icon)
+                            .tag(SidebarItem.analysis)
+                        sidebarRow(l10n.goals, icon: SidebarItem.goals.icon)
+                            .tag(SidebarItem.goals)
+                    }
+                    Section {
+                        sidebarRow(l10n.settings, icon: SidebarItem.settings.icon)
+                            .tag(SidebarItem.settings)
+                        sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
+                            .tag(SidebarItem.advisor)
                     }
                 }
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+                .listStyle(.sidebar)
+
+                if let status = autoSyncStatus {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.mini)
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+            } detail: {
+                switch selectedItem {
+                case .dashboard:
+                    DashboardView()
+                case .chat:
+                    ChatView()
+                case .transactions:
+                    TransactionListView()
+                case .review:
+                    TransactionReviewView()
+                case .emails:
+                    EmailListView()
+                case .calendar:
+                    CalendarView()
+                case .statements:
+                    StatementsView()
+                case .analysis:
+                    AnalysisDashboardView()
+                case .advisor:
+                    AdvisorSettingsView()
+                case .goals:
+                    GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
+                case .settings:
+                    SettingsView(onKeySaved: {
+                        triggerAutoSync()
+                    })
+                case nil:
+                    Text("Select an item from the sidebar")
+                        .foregroundStyle(.secondary)
+                }
             }
-        }
-        .frame(minWidth: 960, minHeight: 640)
-        .onAppear {
-            triggerAutoSync()
-            startSyncTimer()
-        }
-        .onDisappear {
-            syncTimer?.invalidate()
+            .frame(minWidth: 960, minHeight: 640)
+            .onAppear {
+                triggerAutoSync()
+                startSyncTimer()
+            }
+            .onDisappear {
+                syncTimer?.invalidate()
+            }
         }
     }
 

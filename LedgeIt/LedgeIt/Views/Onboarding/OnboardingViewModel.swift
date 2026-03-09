@@ -115,7 +115,7 @@ final class OnboardingViewModel: ObservableObject {
             return
         }
 
-        appendUserMessage("API Key: \(String(apiKeyValue.prefix(8)))...")
+        appendUserMessage("API Key: \u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}")
         showFormCard = false
 
         // Build config from form fields
@@ -241,7 +241,67 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func confirmSuggestions() async {
-        appendUserMessage(selectedLanguage == "zh-Hant" ? "確認" : "Confirmed")
+        appendUserMessage(selectedLanguage == "zh-Hant" ? "\u{662F}\u{7684}\u{FF0C}\u{751F}\u{6210}\u{5EFA}\u{8B70}" : "Yes, generate suggestions")
+        showFormCard = false
+        isProcessing = true
+        await appendAssistantMessage(strings.suggestionsGenerating)
+
+        do {
+            let config = AIProviderConfigStore.load()
+            let session = try SessionFactory.makeSession(
+                assignment: config.chat,
+                config: config,
+                instructions: selectedLanguage == "zh-Hant"
+                    ? "You are a helpful financial advisor. Reply in Traditional Chinese."
+                    : "You are a helpful financial advisor."
+            )
+
+            // Build context from SpendingAnalyzer
+            let analyzer = SpendingAnalyzer(database: database)
+            let calendar = Calendar.current
+            let now = Date()
+            let year = calendar.component(.year, from: now)
+            let month = calendar.component(.month, from: now)
+            let report = try analyzer.monthlyBreakdown(year: year, month: month)
+
+            // Format report as text context
+            var context = "Total spending: \(String(format: "%.2f", report.totalSpending)), "
+            context += "Total income: \(String(format: "%.2f", report.totalIncome)), "
+            context += "Savings rate: \(String(format: "%.1f", report.savingsRate * 100))%\n"
+            context += "Categories:\n"
+            for cat in report.categoryBreakdown {
+                context += "- \(cat.category): \(String(format: "%.2f", cat.amount)) (\(String(format: "%.1f", cat.percentage))%)\n"
+            }
+            context += "Top merchants:\n"
+            for m in report.topMerchants {
+                context += "- \(m.merchant): \(String(format: "%.2f", m.amount)) (\(m.count) txns)\n"
+            }
+
+            let prompt = selectedLanguage == "zh-Hant"
+                ? "Based on the following monthly spending data, provide 3-5 specific and actionable financial suggestions in Traditional Chinese. Explain the benefit and expected impact of each.\n\nSpending data: \(context)"
+                : "Based on the following monthly spending data, provide 3-5 specific and actionable financial suggestions. Explain the benefit and expected impact of each.\n\nSpending data: \(context)"
+
+            let response = try await session.complete(
+                messages: [.user(prompt)],
+                temperature: 0.5,
+                maxTokens: 800
+            )
+            isProcessing = false
+            await appendAssistantMessage(response)
+        } catch {
+            isProcessing = false
+            let fallback = selectedLanguage == "zh-Hant"
+                ? "\u{66AB}\u{6642}\u{7121}\u{6CD5}\u{751F}\u{6210}\u{5EFA}\u{8B70}\u{FF0C}\u{4F60}\u{53EF}\u{4EE5}\u{4E4B}\u{5F8C}\u{5728}\u{300C}\u{9867}\u{554F}\u{300D}\u{529F}\u{80FD}\u{4E2D}\u{7372}\u{53D6}\u{500B}\u{4EBA}\u{5316}\u{7684}\u{8CA1}\u{52D9}\u{5EFA}\u{8B70}\u{3002}"
+                : "Unable to generate suggestions right now. You can get personalized financial advice from the Advisor feature later."
+            await appendAssistantMessage(fallback)
+        }
+
+        await advanceToNext()
+    }
+
+    func skipSuggestions() async {
+        appendUserMessage(selectedLanguage == "zh-Hant" ? "\u{4E0D}\u{7528}\u{4E86}" : "No thanks")
+        showFormCard = false
         await advanceToNext()
     }
 

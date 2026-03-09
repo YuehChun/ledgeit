@@ -37,6 +37,9 @@ struct OnboardingChatView: View {
                     .onChange(of: viewModel.isTyping) {
                         scrollToBottom(proxy: proxy)
                     }
+                    .onChange(of: viewModel.isProcessing) {
+                        scrollToBottom(proxy: proxy)
+                    }
                 }
 
                 Divider()
@@ -145,6 +148,10 @@ struct OnboardingChatView: View {
             withAnimation {
                 proxy.scrollTo("typing-indicator", anchor: .bottom)
             }
+        } else if viewModel.isProcessing {
+            withAnimation {
+                proxy.scrollTo("processing-indicator", anchor: .bottom)
+            }
         } else if let last = viewModel.messages.last {
             withAnimation {
                 proxy.scrollTo(last.id, anchor: .bottom)
@@ -206,14 +213,9 @@ struct TypingIndicatorView: View {
 
             Spacer(minLength: 60)
         }
-        .onAppear {
-            startAnimation()
-        }
-    }
-
-    private func startAnimation() {
-        Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
-            Task { @MainActor in
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(400))
                 dotCount = (dotCount % 3) + 1
             }
         }
