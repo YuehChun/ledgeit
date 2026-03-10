@@ -10,6 +10,15 @@ struct OnboardingChatView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Step progress header
+                StepProgressHeader(
+                    step: viewModel.currentStep,
+                    language: viewModel.selectedLanguage,
+                    isProcessing: viewModel.isProcessing
+                )
+
+                Divider()
+
                 // Chat area
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -192,6 +201,69 @@ struct ChatBubbleView: View {
         case .user:
             Color.accentColor.opacity(0.15)
         }
+    }
+}
+
+// MARK: - StepProgressHeader
+
+struct StepProgressHeader: View {
+    let step: OnboardingStep
+    let language: String
+    let isProcessing: Bool
+
+    private var progress: Double {
+        Double(step.visibleStepIndex) / Double(OnboardingStep.totalVisibleSteps)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            // Step info row
+            HStack(spacing: 10) {
+                // Step icon
+                Image(systemName: step.stepIcon)
+                    .font(.title3)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+
+                // Step title + number
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.stepTitle(language: language))
+                        .font(.headline)
+
+                    Text(language == "zh-Hant"
+                         ? "步驟 \(step.visibleStepIndex) / \(OnboardingStep.totalVisibleSteps)"
+                         : "Step \(step.visibleStepIndex) of \(OnboardingStep.totalVisibleSteps)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // Processing spinner
+                if isProcessing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            // Progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(.separatorColor))
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.accentColor)
+                        .frame(width: geometry.size.width * progress, height: 6)
+                        .animation(.easeInOut(duration: 0.4), value: progress)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
     }
 }
 
