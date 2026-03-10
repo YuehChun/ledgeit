@@ -69,8 +69,8 @@ struct OnboardingStrings {
     // MARK: - Email Sync Step
     var emailSyncIntro: String {
         language == "zh-Hant"
-            ? "現在開始同步你過去兩個月的電子郵件..."
-            : "Now syncing your emails from the past 2 months..."
+            ? "現在開始同步你過去一個月的電子郵件..."
+            : "Now syncing your emails from the past month..."
     }
 
     func emailSyncProgress(_ progress: String) -> String {

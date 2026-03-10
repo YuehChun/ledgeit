@@ -423,7 +423,7 @@ final class OnboardingViewModel: ObservableObject {
         })
 
         do {
-            try await syncService.performInitialSync(lookbackDays: 60)
+            try await syncService.performInitialSync(lookbackDays: 30)
 
             let emailCount = try await database.db.read { db in
                 try Email.fetchCount(db)

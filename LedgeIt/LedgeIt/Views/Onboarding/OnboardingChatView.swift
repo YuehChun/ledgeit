@@ -211,59 +211,85 @@ struct StepProgressHeader: View {
     let language: String
     let isProcessing: Bool
 
-    private var progress: Double {
-        Double(step.visibleStepIndex) / Double(OnboardingStep.totalVisibleSteps)
-    }
+    private static let visibleSteps: [(index: Int, icon: String, titleEn: String, titleZh: String)] = [
+        (1, "globe", "Language", "語言"),
+        (2, "key.fill", "AI Service", "AI 服務"),
+        (3, "envelope.fill", "Gmail", "Gmail"),
+        (4, "arrow.triangle.2.circlepath", "Sync", "同步"),
+        (5, "lock.doc.fill", "PDF", "PDF"),
+        (6, "chart.bar.fill", "Report", "報告"),
+        (7, "lightbulb.fill", "Advice", "建議"),
+    ]
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Step info row
-            HStack(spacing: 10) {
-                // Step icon
-                Image(systemName: step.stepIcon)
-                    .font(.title3)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 24)
+        HStack(spacing: 0) {
+            ForEach(Self.visibleSteps, id: \.index) { stepInfo in
+                let state = stepState(for: stepInfo.index)
 
-                // Step title + number
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(step.stepTitle(language: language))
-                        .font(.headline)
+                HStack(spacing: 0) {
+                    // Step circle + label
+                    VStack(spacing: 4) {
+                        ZStack {
+                            Circle()
+                                .fill(circleColor(for: state))
+                                .frame(width: 32, height: 32)
 
-                    Text(language == "zh-Hant"
-                         ? "步驟 \(step.visibleStepIndex) / \(OnboardingStep.totalVisibleSteps)"
-                         : "Step \(step.visibleStepIndex) of \(OnboardingStep.totalVisibleSteps)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                            if state == .completed {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.white)
+                            } else if state == .current && isProcessing {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: stepInfo.icon)
+                                    .font(.caption2)
+                                    .foregroundStyle(state == .current ? .white : .secondary)
+                            }
+                        }
 
-                Spacer()
+                        Text(language == "zh-Hant" ? stepInfo.titleZh : stepInfo.titleEn)
+                            .font(.system(size: 10))
+                            .foregroundStyle(state == .upcoming ? .tertiary : .secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
 
-                // Processing spinner
-                if isProcessing {
-                    ProgressView()
-                        .controlSize(.small)
+                    // Connector line (not after last step)
+                    if stepInfo.index < Self.visibleSteps.count {
+                        Rectangle()
+                            .fill(stepInfo.index < step.visibleStepIndex
+                                  ? Color.accentColor
+                                  : Color(.separatorColor))
+                            .frame(height: 2)
+                            .frame(maxWidth: 20)
+                    }
                 }
             }
-
-            // Progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(.separatorColor))
-                        .frame(height: 6)
-
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.accentColor)
-                        .frame(width: geometry.size.width * progress, height: 6)
-                        .animation(.easeInOut(duration: 0.4), value: progress)
-                }
-            }
-            .frame(height: 6)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial)
+        .animation(.easeInOut(duration: 0.3), value: step)
+    }
+
+    private enum StepState {
+        case completed, current, upcoming
+    }
+
+    private func stepState(for index: Int) -> StepState {
+        let currentIndex = step.visibleStepIndex
+        if index < currentIndex { return .completed }
+        if index == currentIndex { return .current }
+        return .upcoming
+    }
+
+    private func circleColor(for state: StepState) -> Color {
+        switch state {
+        case .completed: return Color.accentColor
+        case .current: return Color.accentColor.opacity(0.8)
+        case .upcoming: return Color(.separatorColor)
+        }
     }
 }
 
