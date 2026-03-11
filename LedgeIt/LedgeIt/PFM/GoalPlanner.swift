@@ -136,7 +136,7 @@ struct GoalPlanner: Sendable {
         """
 
         let session = try SessionFactory.makeSession(
-            assignment: providerConfig.extraction,
+            assignment: providerConfig.advisor,
             config: providerConfig
         )
         let response = try await session.complete(

@@ -11,7 +11,13 @@ enum AIProviderConfigStore {
             return .default
         }
         do {
-            return try JSONDecoder().decode(AIProviderConfiguration.self, from: data)
+            var config = try JSONDecoder().decode(AIProviderConfiguration.self, from: data)
+            // Merge any new built-in presets that the user doesn't have yet
+            let existingIds = Set(config.endpoints.map(\.id))
+            for preset in OpenAICompatibleEndpoint.builtInPresets where !existingIds.contains(preset.id) {
+                config.endpoints.append(preset)
+            }
+            return config
         } catch {
             configLogger.error("Failed to decode saved AI provider config: \(error.localizedDescription). Returning defaults.")
             return .default

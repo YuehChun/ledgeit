@@ -39,6 +39,13 @@ struct OpenAICompatibleEndpoint: Codable, Sendable, Identifiable, Equatable {
             requiresAPIKey: false,
             defaultModel: "llama3.2"
         ),
+        OpenAICompatibleEndpoint(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            name: "VibeProxy",
+            baseURL: "http://127.0.0.1:8318/v1",
+            requiresAPIKey: false,
+            defaultModel: "claude-sonnet-4-6-20250514"
+        ),
     ]
 }
 
@@ -58,6 +65,27 @@ struct AIProviderConfiguration: Codable, Sendable {
     var extraction: ModelAssignment
     var statement: ModelAssignment
     var chat: ModelAssignment
+    var advisor: ModelAssignment
+
+    init(endpoints: [OpenAICompatibleEndpoint], classification: ModelAssignment, extraction: ModelAssignment, statement: ModelAssignment, chat: ModelAssignment, advisor: ModelAssignment) {
+        self.endpoints = endpoints
+        self.classification = classification
+        self.extraction = extraction
+        self.statement = statement
+        self.chat = chat
+        self.advisor = advisor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        endpoints = try container.decode([OpenAICompatibleEndpoint].self, forKey: .endpoints)
+        classification = try container.decode(ModelAssignment.self, forKey: .classification)
+        extraction = try container.decode(ModelAssignment.self, forKey: .extraction)
+        statement = try container.decode(ModelAssignment.self, forKey: .statement)
+        chat = try container.decode(ModelAssignment.self, forKey: .chat)
+        // Backward compatibility: fall back to extraction if advisor is missing
+        advisor = try container.decodeIfPresent(ModelAssignment.self, forKey: .advisor) ?? extraction
+    }
 
     static var `default`: AIProviderConfiguration {
         let openRouter = OpenAICompatibleEndpoint.builtInPresets[1]
@@ -79,7 +107,8 @@ struct AIProviderConfiguration: Codable, Sendable {
                 endpointId: openRouter.id,
                 model: "google/gemini-2.5-pro"
             ),
-            chat: defaultAssignment
+            chat: defaultAssignment,
+            advisor: defaultAssignment
         )
     }
 }

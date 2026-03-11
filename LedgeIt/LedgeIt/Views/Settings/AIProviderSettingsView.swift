@@ -11,6 +11,14 @@ struct AIProviderSettingsView: View {
     @State private var endpointAPIKeys: [UUID: String] = [:]
     @State private var saveMessage: String?
     @State private var endpointToDelete: OpenAICompatibleEndpoint?
+    @State private var validatingAssignment: String?
+    @State private var assignmentStatus: [String: AssignmentValidationStatus] = [:]
+
+    private enum AssignmentValidationStatus: Equatable {
+        case validating
+        case success
+        case failed(String)
+    }
 
     init() {
         _config = State(initialValue: AIProviderConfigStore.load())
@@ -264,6 +272,11 @@ struct AIProviderSettingsView: View {
                     description: "AI assistant",
                     keyPath: \.chat
                 )
+                modelAssignmentRow(
+                    label: "Advisor",
+                    description: "financial analysis & goals",
+                    keyPath: \.advisor
+                )
 
                 HStack {
                     Spacer()
@@ -291,6 +304,7 @@ struct AIProviderSettingsView: View {
         keyPath: WritableKeyPath<AIProviderConfiguration, ModelAssignment>
     ) -> some View {
         let assignment = config[keyPath: keyPath]
+        let statusKey = label
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
@@ -311,6 +325,7 @@ struct AIProviderSettingsView: View {
                         get: { providerPickerValue(for: assignment) },
                         set: { newValue in
                             applyProviderSelection(newValue, to: keyPath)
+                            assignmentStatus.removeValue(forKey: statusKey)
                         }
                     )) {
                         ForEach(availableProviderOptions, id: \.id) { option in
@@ -329,15 +344,59 @@ struct AIProviderSettingsView: View {
                         get: { config[keyPath: keyPath].model },
                         set: { newModel in
                             config[keyPath: keyPath].model = newModel
+                            assignmentStatus.removeValue(forKey: statusKey)
                         }
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.callout)
-                    .onSubmit { saveConfig() }
-                    .onChange(of: config[keyPath: keyPath].model) { _, _ in
-                        saveConfig()
+                    .onSubmit {
+                        validateAndSaveAssignment(label: statusKey, keyPath: keyPath)
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(" ")
+                        .font(.caption2)
+                    Button {
+                        validateAndSaveAssignment(label: statusKey, keyPath: keyPath)
+                    } label: {
+                        if assignmentStatus[statusKey] == .validating {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 40)
+                        } else {
+                            Text("Save")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(assignmentStatus[statusKey] == .validating)
+                }
+            }
+
+            if let status = assignmentStatus[statusKey] {
+                HStack(spacing: 4) {
+                    switch status {
+                    case .validating:
+                        EmptyView()
+                    case .success:
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                        Text("Model verified")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    case .failed(let error):
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .padding(10)
@@ -435,7 +494,7 @@ struct AIProviderSettingsView: View {
 
         // Reset any assignments pointing to this endpoint
         let useCases: [WritableKeyPath<AIProviderConfiguration, ModelAssignment>] =
-            [\.classification, \.extraction, \.statement, \.chat]
+            [\.classification, \.extraction, \.statement, \.chat, \.advisor]
         for kp in useCases {
             if config[keyPath: kp].endpointId == endpoint.id {
                 // Fall back to first available endpoint or default
@@ -467,6 +526,49 @@ struct AIProviderSettingsView: View {
         withAnimation { saveMessage = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation { saveMessage = nil }
+        }
+    }
+
+    private func validateAndSaveAssignment(
+        label: String,
+        keyPath: WritableKeyPath<AIProviderConfiguration, ModelAssignment>
+    ) {
+        let assignment = config[keyPath: keyPath]
+        guard !assignment.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            withAnimation { assignmentStatus[label] = .failed("Model ID is required") }
+            return
+        }
+
+        saveConfig()
+        withAnimation { assignmentStatus[label] = .validating }
+
+        Task {
+            do {
+                let session = try SessionFactory.makeSession(
+                    assignment: assignment,
+                    config: config
+                )
+                let _ = try await session.complete(
+                    messages: [.user("hi")],
+                    temperature: 0.0,
+                    maxTokens: 10
+                )
+                await MainActor.run {
+                    withAnimation { assignmentStatus[label] = .success }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        withAnimation {
+                            if assignmentStatus[label] == .success {
+                                assignmentStatus.removeValue(forKey: label)
+                            }
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    let message = error.localizedDescription
+                    withAnimation { assignmentStatus[label] = .failed(message) }
+                }
+            }
         }
     }
 }
