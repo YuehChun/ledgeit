@@ -11,74 +11,42 @@ struct AIProviderSettingsView: View {
     @State private var endpointAPIKeys: [UUID: String] = [:]
     @State private var saveMessage: String?
     @State private var endpointToDelete: OpenAICompatibleEndpoint?
-    @State private var validatingAssignment: String?
-    @State private var assignmentStatus: [String: AssignmentValidationStatus] = [:]
-
-    private enum AssignmentValidationStatus: Equatable {
-        case validating
-        case success
-        case failed(String)
-    }
+    @State private var providersExpanded = false
+    @State private var modelsExpanded = true
+    @State private var customModelText: [String: String] = [:]
+    @State private var useCustomModel: Set<String> = []
 
     init() {
         _config = State(initialValue: AIProviderConfigStore.load())
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            providerManagementSection
-            modelAssignmentSection
-        }
-    }
-
-    // MARK: - Section 1: Provider Management
-
-    private var providerManagementSection: some View {
-        SettingsSection(title: "AI Providers", icon: "brain.head.profile", color: .purple) {
-            VStack(alignment: .leading, spacing: 14) {
-                // OpenAI Compatible Endpoints
-                Text("OpenAI Compatible Endpoints")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fontWeight(.medium)
-
-                ForEach(config.endpoints) { endpoint in
-                    endpointCard(for: endpoint)
-                }
-
-                Button {
-                    showAddEndpointSheet = true
-                } label: {
-                    Label("Add Endpoint", systemImage: "plus.circle")
-                        .font(.callout)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Divider()
-
-                // Direct Providers
-                Text("Direct Providers")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fontWeight(.medium)
-
-                directProviderField(
-                    label: "Anthropic API Key",
-                    placeholder: "sk-ant-...",
-                    key: .anthropicAPIKey,
-                    binding: $anthropicAPIKey
-                )
-
-                directProviderField(
-                    label: "Google AI API Key",
-                    placeholder: "AIza...",
-                    key: .googleAIAPIKey,
-                    binding: $googleAIAPIKey
-                )
+        VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(isExpanded: $providersExpanded) {
+                providerManagementContent
+            } label: {
+                Label("AI Providers", systemImage: "brain.head.profile")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.purple)
             }
+            .padding(14)
+            .background(.background.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            DisclosureGroup(isExpanded: $modelsExpanded) {
+                modelAssignmentContent
+            } label: {
+                Label("Model Assignment", systemImage: "cpu")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.blue)
+            }
+            .padding(14)
+            .background(.background.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
-        .onAppear(perform: loadDirectProviderKeys)
+        .onAppear(perform: loadState)
         .sheet(isPresented: $showAddEndpointSheet) {
             EndpointEditorSheet(
                 endpoint: nil,
@@ -137,52 +105,90 @@ struct AIProviderSettingsView: View {
         }
     }
 
-    // MARK: - Endpoint Card
+    // MARK: - Provider Management Content
 
-    private func endpointCard(for endpoint: OpenAICompatibleEndpoint) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(endpoint.name)
+    private var providerManagementContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("OpenAI Compatible Endpoints")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fontWeight(.medium)
+                .padding(.top, 8)
+
+            ForEach(config.endpoints) { endpoint in
+                endpointRow(for: endpoint)
+            }
+
+            Button {
+                showAddEndpointSheet = true
+            } label: {
+                Label("Add Endpoint", systemImage: "plus.circle")
                     .font(.callout)
-                    .fontWeight(.medium)
-                Spacer()
-                endpointStatusBadge(for: endpoint)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Divider()
+
+            Text("Direct Providers")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fontWeight(.medium)
+
+            directProviderField(
+                label: "Anthropic API Key",
+                placeholder: "sk-ant-...",
+                key: .anthropicAPIKey,
+                binding: $anthropicAPIKey
+            )
+
+            directProviderField(
+                label: "Google AI API Key",
+                placeholder: "AIza...",
+                key: .googleAIAPIKey,
+                binding: $googleAIAPIKey
+            )
+
+            if let saveMessage {
+                Text(saveMessage)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Compact Endpoint Row
+
+    private func endpointRow(for endpoint: OpenAICompatibleEndpoint) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(endpoint.name)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                    endpointStatusBadge(for: endpoint)
+                }
+                Text(endpoint.baseURL)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
 
-            Text(endpoint.baseURL)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            Spacer()
 
-            if !endpoint.defaultModel.isEmpty {
-                HStack(spacing: 4) {
-                    Text("Model:")
-                        .foregroundStyle(.secondary)
-                    Text(endpoint.defaultModel)
-                }
-                .font(.caption)
-            }
-
-            HStack(spacing: 8) {
-                Button("Edit") {
-                    editingEndpoint = endpoint
-                }
+            Button("Edit") { editingEndpoint = endpoint }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
 
-                Button("Delete", role: .destructive) {
-                    endpointToDelete = endpoint
-                }
+            Button("Delete", role: .destructive) { endpointToDelete = endpoint }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
                 .disabled(config.endpoints.count <= 1)
-            }
-            .padding(.top, 2)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
         .background(.background.tertiary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func endpointStatusBadge(for endpoint: OpenAICompatibleEndpoint) -> some View {
@@ -196,16 +202,12 @@ struct AIProviderSettingsView: View {
             status = ("no API key", .orange)
         }
 
-        return HStack(spacing: 4) {
-            Circle()
-                .fill(status.1)
-                .frame(width: 6, height: 6)
-            Text(status.0)
-                .font(.caption2)
-                .foregroundStyle(status.1)
+        return HStack(spacing: 3) {
+            Circle().fill(status.1).frame(width: 5, height: 5)
+            Text(status.0).font(.caption2).foregroundStyle(status.1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .background(status.1.opacity(0.1))
         .clipShape(Capsule())
     }
@@ -218,82 +220,56 @@ struct AIProviderSettingsView: View {
         key: KeychainService.Key,
         binding: Binding<String>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 8) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fontWeight(.medium)
-            HStack(spacing: 8) {
-                SecureField(placeholder, text: binding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.callout)
-                Button("Save") {
-                    let value = binding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if value.isEmpty {
-                        KeychainService.delete(key: key)
+                .frame(width: 130, alignment: .trailing)
+            SecureField(placeholder, text: binding)
+                .textFieldStyle(.roundedBorder)
+                .font(.callout)
+            Button("Save") {
+                let value = binding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if value.isEmpty {
+                    KeychainService.delete(key: key)
+                    flashSaveMessage("Saved")
+                } else {
+                    do {
+                        try KeychainService.save(key: key, value: value)
                         flashSaveMessage("Saved")
-                    } else {
-                        do {
-                            try KeychainService.save(key: key, value: value)
-                            flashSaveMessage("Saved")
-                        } catch {
-                            flashSaveMessage("Failed to save key")
-                        }
+                    } catch {
+                        flashSaveMessage("Failed to save key")
                     }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
-    // MARK: - Section 2: Model Assignment
+    // MARK: - Model Assignment Content
 
-    private var modelAssignmentSection: some View {
-        SettingsSection(title: "Model Assignment", icon: "cpu", color: .blue) {
-            VStack(alignment: .leading, spacing: 14) {
-                modelAssignmentRow(
-                    label: "Classification",
-                    description: "email filtering",
-                    keyPath: \.classification
-                )
-                modelAssignmentRow(
-                    label: "Extraction",
-                    description: "transaction parsing",
-                    keyPath: \.extraction
-                )
-                modelAssignmentRow(
-                    label: "Statement",
-                    description: "PDF analysis",
-                    keyPath: \.statement
-                )
-                modelAssignmentRow(
-                    label: "Chat",
-                    description: "AI assistant",
-                    keyPath: \.chat
-                )
-                modelAssignmentRow(
-                    label: "Advisor",
-                    description: "financial analysis & goals",
-                    keyPath: \.advisor
-                )
+    private var modelAssignmentContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Spacer().frame(height: 4)
 
-                HStack {
-                    Spacer()
-                    Button("Reset to Defaults") {
-                        config = .default
-                        saveConfig()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            modelAssignmentRow(label: "Classification", description: "email filtering", keyPath: \.classification)
+            modelAssignmentRow(label: "Extraction", description: "transaction parsing", keyPath: \.extraction)
+            modelAssignmentRow(label: "Statement", description: "PDF analysis", keyPath: \.statement)
+            modelAssignmentRow(label: "Chat", description: "AI assistant", keyPath: \.chat)
+            modelAssignmentRow(label: "Advisor", description: "financial analysis & goals", keyPath: \.advisor)
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    config = .default
+                    useCustomModel.removeAll()
+                    customModelText.removeAll()
+                    saveConfig()
                 }
-
-                if let saveMessage {
-                    Text(saveMessage)
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                        .transition(.opacity)
-                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
@@ -304,105 +280,122 @@ struct AIProviderSettingsView: View {
         keyPath: WritableKeyPath<AIProviderConfiguration, ModelAssignment>
     ) -> some View {
         let assignment = config[keyPath: keyPath]
-        let statusKey = label
+        let groups = modelGroups(for: assignment)
+        let allModels = ModelCatalog.allModels(for: groups)
+        let isCustom = useCustomModel.contains(label) || groups.isEmpty
+        let currentInList = allModels.contains { $0.id == assignment.model }
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
+        return HStack(spacing: 10) {
+            // Label
+            VStack(alignment: .leading, spacing: 1) {
                 Text(label)
                     .font(.callout)
                     .fontWeight(.medium)
-                Text("(\(description))")
-                    .font(.caption)
+                Text(description)
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
+            .frame(width: 100, alignment: .leading)
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Provider")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Picker("Provider", selection: Binding(
-                        get: { providerPickerValue(for: assignment) },
-                        set: { newValue in
-                            applyProviderSelection(newValue, to: keyPath)
-                            assignmentStatus.removeValue(forKey: statusKey)
-                        }
-                    )) {
-                        ForEach(availableProviderOptions, id: \.id) { option in
-                            Text(option.label).tag(option.id)
-                        }
+            // Provider picker
+            Picker("", selection: Binding(
+                get: { providerPickerValue(for: assignment) },
+                set: { newValue in
+                    applyProviderSelection(newValue, to: keyPath)
+                    // Reset custom state and auto-select first model for new provider
+                    useCustomModel.remove(label)
+                    let newAssignment = config[keyPath: keyPath]
+                    let newGroups = modelGroups(for: newAssignment)
+                    let newModels = ModelCatalog.allModels(for: newGroups)
+                    if !newModels.contains(where: { $0.id == newAssignment.model }),
+                       let first = newModels.first {
+                        config[keyPath: keyPath].model = first.id
+                        saveConfig()
                     }
-                    .labelsHidden()
-                    .frame(width: 150)
                 }
+            )) {
+                ForEach(availableProviderOptions, id: \.id) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 130)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Model")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+            // Model picker or custom text field
+            if isCustom || (!currentInList && !groups.isEmpty) {
+                // Custom input mode
+                HStack(spacing: 4) {
                     TextField("model-id", text: Binding(
                         get: { config[keyPath: keyPath].model },
                         set: { newModel in
                             config[keyPath: keyPath].model = newModel
-                            assignmentStatus.removeValue(forKey: statusKey)
                         }
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.callout)
-                    .onSubmit {
-                        validateAndSaveAssignment(label: statusKey, keyPath: keyPath)
-                    }
-                }
+                    .onSubmit { saveConfig() }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(" ")
-                        .font(.caption2)
-                    Button {
-                        validateAndSaveAssignment(label: statusKey, keyPath: keyPath)
-                    } label: {
-                        if assignmentStatus[statusKey] == .validating {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(width: 40)
-                        } else {
-                            Text("Save")
+                    if !groups.isEmpty {
+                        Button {
+                            useCustomModel.remove(label)
+                            if let first = allModels.first {
+                                config[keyPath: keyPath].model = first.id
+                                saveConfig()
+                            }
+                        } label: {
+                            Image(systemName: "list.bullet")
+                                .font(.caption)
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help("Switch to model list")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(assignmentStatus[statusKey] == .validating)
                 }
-            }
-
-            if let status = assignmentStatus[statusKey] {
+            } else {
+                // Grouped picker mode
                 HStack(spacing: 4) {
-                    switch status {
-                    case .validating:
-                        EmptyView()
-                    case .success:
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                        Text("Model verified")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    case .failed(let error):
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .lineLimit(2)
+                    Picker("", selection: Binding(
+                        get: { config[keyPath: keyPath].model },
+                        set: { newModel in
+                            if newModel == "__custom__" {
+                                useCustomModel.insert(label)
+                                customModelText[label] = config[keyPath: keyPath].model
+                            } else {
+                                config[keyPath: keyPath].model = newModel
+                                saveConfig()
+                            }
+                        }
+                    )) {
+                        ForEach(groups) { group in
+                            Section(header: Text(group.label)) {
+                                ForEach(group.models) { model in
+                                    Text(model.label).tag(model.id)
+                                }
+                            }
+                        }
+                        Divider()
+                        Text("Custom...").tag("__custom__")
                     }
+                    .labelsHidden()
                 }
-                .transition(.opacity)
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
         .background(.background.tertiary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    // MARK: - Model Group Resolution
+
+    private func modelGroups(for assignment: ModelAssignment) -> [ModelCatalog.ModelGroup] {
+        let endpointName: String?
+        if assignment.provider == .openAICompatible, let eid = assignment.endpointId {
+            endpointName = config.endpoints.first(where: { $0.id == eid })?.name
+        } else {
+            endpointName = nil
+        }
+        return ModelCatalog.groups(for: assignment.provider, endpointName: endpointName)
     }
 
     // MARK: - Provider Picker Helpers
@@ -417,7 +410,6 @@ struct AIProviderSettingsView: View {
     private var availableProviderOptions: [ProviderOption] {
         var options: [ProviderOption] = []
 
-        // Add each OpenAI Compatible endpoint
         for endpoint in config.endpoints {
             options.append(ProviderOption(
                 id: "endpoint_\(endpoint.id.uuidString)",
@@ -427,26 +419,14 @@ struct AIProviderSettingsView: View {
             ))
         }
 
-        // Add Anthropic if key is configured
         let hasAnthropicKey = !anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hasAnthropicKey {
-            options.append(ProviderOption(
-                id: "anthropic",
-                label: "Anthropic",
-                provider: .anthropic,
-                endpointId: nil
-            ))
+            options.append(ProviderOption(id: "anthropic", label: "Anthropic", provider: .anthropic, endpointId: nil))
         }
 
-        // Add Google AI if key is configured
         let hasGoogleAIKey = !googleAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hasGoogleAIKey {
-            options.append(ProviderOption(
-                id: "google",
-                label: "Google AI",
-                provider: .google,
-                endpointId: nil
-            ))
+            options.append(ProviderOption(id: "google", label: "Google AI", provider: .google, endpointId: nil))
         }
 
         return options
@@ -492,12 +472,10 @@ struct AIProviderSettingsView: View {
         KeychainService.deleteEndpointAPIKey(endpointId: endpoint.id)
         endpointAPIKeys.removeValue(forKey: endpoint.id)
 
-        // Reset any assignments pointing to this endpoint
         let useCases: [WritableKeyPath<AIProviderConfiguration, ModelAssignment>] =
             [\.classification, \.extraction, \.statement, \.chat, \.advisor]
         for kp in useCases {
             if config[keyPath: kp].endpointId == endpoint.id {
-                // Fall back to first available endpoint or default
                 if let fallback = config.endpoints.first {
                     config[keyPath: kp].endpointId = fallback.id
                 }
@@ -510,14 +488,29 @@ struct AIProviderSettingsView: View {
         AIProviderConfigStore.save(config)
     }
 
-    private func loadDirectProviderKeys() {
+    private func loadState() {
         anthropicAPIKey = KeychainService.load(key: .anthropicAPIKey) ?? ""
         googleAIAPIKey = KeychainService.load(key: .googleAIAPIKey) ?? ""
-
-        // Load endpoint API keys for status display
         for endpoint in config.endpoints {
             if let key = KeychainService.loadEndpointAPIKey(endpointId: endpoint.id) {
                 endpointAPIKeys[endpoint.id] = key
+            }
+        }
+
+        // Detect which assignments have custom (non-catalog) models
+        let useCases: [(String, KeyPath<AIProviderConfiguration, ModelAssignment>)] = [
+            ("Classification", \.classification),
+            ("Extraction", \.extraction),
+            ("Statement", \.statement),
+            ("Chat", \.chat),
+            ("Advisor", \.advisor),
+        ]
+        for (label, kp) in useCases {
+            let assignment = config[keyPath: kp]
+            let groups = modelGroups(for: assignment)
+            let allModels = ModelCatalog.allModels(for: groups)
+            if !groups.isEmpty && !allModels.contains(where: { $0.id == assignment.model }) {
+                useCustomModel.insert(label)
             }
         }
     }
@@ -526,49 +519,6 @@ struct AIProviderSettingsView: View {
         withAnimation { saveMessage = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation { saveMessage = nil }
-        }
-    }
-
-    private func validateAndSaveAssignment(
-        label: String,
-        keyPath: WritableKeyPath<AIProviderConfiguration, ModelAssignment>
-    ) {
-        let assignment = config[keyPath: keyPath]
-        guard !assignment.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            withAnimation { assignmentStatus[label] = .failed("Model ID is required") }
-            return
-        }
-
-        saveConfig()
-        withAnimation { assignmentStatus[label] = .validating }
-
-        Task {
-            do {
-                let session = try SessionFactory.makeSession(
-                    assignment: assignment,
-                    config: config
-                )
-                let _ = try await session.complete(
-                    messages: [.user("hi")],
-                    temperature: 0.0,
-                    maxTokens: 10
-                )
-                await MainActor.run {
-                    withAnimation { assignmentStatus[label] = .success }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                        withAnimation {
-                            if assignmentStatus[label] == .success {
-                                assignmentStatus.removeValue(forKey: label)
-                            }
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    let message = error.localizedDescription
-                    withAnimation { assignmentStatus[label] = .failed(message) }
-                }
-            }
         }
     }
 }
