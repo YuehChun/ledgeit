@@ -6,6 +6,7 @@ private let chatLogger = Logger(subsystem: "com.ledgeit.app", category: "ChatEng
 actor ChatEngine {
     private let queryService: FinancialQueryService
     private let embeddingService: EmbeddingService
+    private let agentFileManager = AgentFileManager()
     private var conversationHistory: [LLMMessage] = []
     private let maxToolIterations = 5
 
@@ -159,8 +160,7 @@ actor ChatEngine {
             .map { "\($0.category): \(String(format: "%.2f", $0.totalAmount)) (\(String(format: "%.1f", $0.percentage))%)" }
             .joined(separator: ", ")
 
-        return """
-            You are a helpful financial assistant for LedgeIt, a personal finance app.
+        let financialSnapshot = """
             Today is \(today).
 
             Current financial snapshot:
@@ -172,10 +172,11 @@ actor ChatEngine {
             - Top spending categories: \(categoryList.isEmpty ? "None" : categoryList)
 
             ## Interaction Guidelines
-            1. **Understand intent first**: When the user asks a question, briefly confirm your understanding of what they want before diving into data. For example: "Let me look up your dining spending this month..." or "I'll check your upcoming payments..."
-            2. **Rephrase when ambiguous**: If the user's request is vague or could mean multiple things, rephrase their intent and ask for confirmation before querying data. For example: "It sounds like you want to compare this month's spending to last month — is that right?"
+            1. **Understand intent first**: When the user asks a question, briefly confirm your understanding of what they want before diving into data.
+            2. **Rephrase when ambiguous**: If the user's request is vague, rephrase their intent and ask for confirmation.
             3. **Summarize findings**: After retrieving data, provide a clear summary with key insights, not just raw numbers.
             4. **Proactive suggestions**: When you notice patterns (overspending, upcoming bills, goal progress), mention them.
+            5. **Remember important things**: When you learn something new about the user (preferences, goals, habits), save it to memory using memory_save.
 
             ## Formatting
             - Use the available tools to query detailed data when needed.
@@ -184,15 +185,18 @@ actor ChatEngine {
             - Respond in the same language the user uses.
 
             ## Tool Selection
-            - Use `semantic_search` when the user asks about specific merchants, brands, products, or conceptual spending categories. It uses hybrid search (vector + keyword).
-            - CRITICAL: Transaction data is stored in BOTH English and Chinese. When searching, ALWAYS provide BOTH the original term AND its translation in the `queries` array. Examples:
-              - User asks "寶可夢" → queries: ["寶可夢", "Pokémon", "Pokemon"]
-              - User asks "星巴克" → queries: ["星巴克", "Starbucks"]
-              - User asks "日本旅遊" → queries: ["日本", "Japan", "JR", "虎航", "Tigerair"]
-              - User asks "Uber Eats" → queries: ["Uber Eats", "外送"]
-            - Use `get_transactions` or `search_transactions` when the user specifies exact filters (date range, amount range, transaction type).
-            - You can combine both: use semantic_search first to discover relevant transactions, then get_transactions for precise filtering.
+            - Use `semantic_search` when the user asks about specific merchants, brands, products, or conceptual spending categories.
+            - CRITICAL: Transaction data is stored in BOTH English and Chinese. When searching, ALWAYS provide BOTH the original term AND its translation in the `queries` array.
+            - Use `get_transactions` or `search_transactions` when the user specifies exact filters.
+            - Use `memory_save` when you learn something important about the user.
+            - Use `memory_search` when you need to recall past conversations or user preferences.
+            - Use `memory_get` to read full content of a specific memory file.
             """
+
+        return AgentPromptBuilder.build(
+            fileManager: agentFileManager,
+            financialSnapshot: financialSnapshot
+        )
     }
 
     // MARK: - Tool Definitions
@@ -307,6 +311,57 @@ actor ChatEngine {
                         "limit": ["type": "integer", "description": "Max results to return (default 10)"]
                     ] as [String: Any],
                     "required": ["queries"] as [String]
+                ] as [String: Any]
+            ),
+            LLMToolDefinition(
+                name: "memory_save",
+                description: "Save information to the agent's memory. Use when you learn something important about the user (preferences, goals, habits) or need to record a decision or observation.",
+                parameters: [
+                    "type": "object",
+                    "properties": [
+                        "file": [
+                            "type": "string",
+                            "enum": ["user_profile", "long_term", "daily", "active_context"],
+                            "description": "Target file: user_profile (preferences), long_term (patterns/facts), daily (today's log), active_context (in-progress work)"
+                        ] as [String: Any],
+                        "content": ["type": "string", "description": "The text content to save"],
+                        "mode": [
+                            "type": "string",
+                            "enum": ["append", "replace"],
+                            "description": "Write mode: append (add to file) or replace (overwrite). Default: append"
+                        ] as [String: Any]
+                    ] as [String: Any],
+                    "required": ["file", "content"] as [String]
+                ] as [String: Any]
+            ),
+            LLMToolDefinition(
+                name: "memory_search",
+                description: "Search through the agent's memory files by keyword. Use when you need to recall past conversations, user preferences, or previous decisions.",
+                parameters: [
+                    "type": "object",
+                    "properties": [
+                        "query": ["type": "string", "description": "Search keywords"],
+                        "scope": [
+                            "type": "string",
+                            "enum": ["all", "daily", "long_term"],
+                            "description": "Search scope: all (default), daily (only daily logs), long_term (only MEMORY.md)"
+                        ] as [String: Any]
+                    ] as [String: Any],
+                    "required": ["query"] as [String]
+                ] as [String: Any]
+            ),
+            LLMToolDefinition(
+                name: "memory_get",
+                description: "Read the full content of a specific memory file. Use when memory_search found relevant results and you need the complete context.",
+                parameters: [
+                    "type": "object",
+                    "properties": [
+                        "file": [
+                            "type": "string",
+                            "description": "File to read: user_profile, long_term, active_context, persona, or daily:YYYY-MM-DD (e.g. daily:2026-03-12)"
+                        ] as [String: Any]
+                    ] as [String: Any],
+                    "required": ["file"] as [String]
                 ] as [String: Any]
             )
         ]
@@ -440,6 +495,76 @@ actor ChatEngine {
                 chatLogger.debug("  tx: \(t.merchant ?? "?") id=\(t.id ?? 0) amt=\(t.amount)")
             }
             return formatTransactions(transactions)
+
+        case "memory_save":
+            let fileStr = args["file"] as? String ?? "daily"
+            let content = args["content"] as? String ?? ""
+            let modeStr = args["mode"] as? String ?? "append"
+
+            guard !content.isEmpty else {
+                return "Error: content parameter is required"
+            }
+
+            let file: AgentFileManager.AgentFile
+            switch fileStr {
+            case "user_profile": file = .userProfile
+            case "long_term": file = .longTerm
+            case "active_context": file = .activeContext
+            default: file = .daily
+            }
+
+            let mode: AgentFileManager.WriteMode = modeStr == "replace" ? .replace : .append
+
+            let finalContent: String
+            if file == .daily {
+                let timeFmt = DateFormatter()
+                timeFmt.dateFormat = "HH:mm"
+                finalContent = "[\(timeFmt.string(from: Date()))] \(content)"
+            } else {
+                finalContent = content
+            }
+
+            let result = try agentFileManager.write(file: file, content: finalContent, mode: mode)
+            return "Saved to \(result.path) (\(result.count) characters)"
+
+        case "memory_search":
+            let query = args["query"] as? String ?? ""
+            let scope = args["scope"] as? String ?? "all"
+            guard !query.isEmpty else {
+                return "Error: query parameter is required"
+            }
+            let searchResults = agentFileManager.search(query: query, scope: scope)
+            if searchResults.isEmpty {
+                return "No memory entries found for: \(query)"
+            }
+            return searchResults.map { "[\($0.fileName):\($0.lineNumber)] \($0.content)" }.joined(separator: "\n\n")
+
+        case "memory_get":
+            let fileStr = args["file"] as? String ?? ""
+            let file: AgentFileManager.AgentFile
+            var date: String? = nil
+
+            if fileStr.hasPrefix("daily:") {
+                file = .daily
+                date = String(fileStr.dropFirst("daily:".count))
+            } else {
+                switch fileStr {
+                case "user_profile": file = .userProfile
+                case "long_term": file = .longTerm
+                case "active_context": file = .activeContext
+                case "persona": file = .persona
+                default:
+                    return "Error: unknown file '\(fileStr)'. Use: user_profile, long_term, active_context, persona, or daily:YYYY-MM-DD"
+                }
+            }
+
+            guard let memContent = agentFileManager.read(file: file, date: date) else {
+                return "File not found or empty: \(fileStr)"
+            }
+            if memContent.count > 10_000 {
+                return String(memContent.prefix(10_000)) + "\n\n[truncated at 10,000 characters]"
+            }
+            return memContent
 
         default:
             return "Unknown tool: \(name)"
