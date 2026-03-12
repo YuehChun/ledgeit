@@ -12,6 +12,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case analysis = "Analysis"
     case advisor = "Advisor"
     case goals = "Goals"
+    case insights = "Insights"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -28,6 +29,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .analysis: return "chart.bar.doc.horizontal.fill"
         case .advisor: return "brain.head.profile.fill"
         case .goals: return "target"
+        case .insights: return "brain.head.profile"
         case .settings: return "gearshape.fill"
         }
     }
@@ -40,6 +42,7 @@ struct ContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var autoSyncStatus: String?
     @State private var syncTimer: Timer?
+    @State private var unreadInsightCount = 0
 
     private let autoSyncInterval: TimeInterval = 15 * 60 // 15 minutes
 
@@ -55,6 +58,9 @@ struct ContentView: View {
                             .tag(SidebarItem.dashboard)
                         sidebarRow(l10n.chat, icon: SidebarItem.chat.icon)
                             .tag(SidebarItem.chat)
+                        sidebarRow(l10n.insights, icon: SidebarItem.insights.icon)
+                            .tag(SidebarItem.insights)
+                            .badge(unreadInsightCount)
                     }
                     Section(l10n.data) {
                         sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
@@ -117,6 +123,8 @@ struct ContentView: View {
                     AdvisorSettingsView()
                 case .goals:
                     GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
+                case .insights:
+                    InsightsView()
                 case .settings:
                     SettingsView(onKeySaved: {
                         triggerAutoSync()
@@ -130,10 +138,26 @@ struct ContentView: View {
             .onAppear {
                 triggerAutoSync()
                 startSyncTimer()
+                Task {
+                    await HeartbeatService.shared.runIfNeeded()
+                    await loadUnreadInsightCount()
+                }
             }
             .onDisappear {
                 syncTimer?.invalidate()
             }
+        }
+    }
+
+    private func loadUnreadInsightCount() async {
+        do {
+            unreadInsightCount = try await AppDatabase.shared.db.read { db in
+                try HeartbeatInsight
+                    .filter(HeartbeatInsight.Columns.isRead == false)
+                    .fetchCount(db)
+            }
+        } catch {
+            unreadInsightCount = 0
         }
     }
 

@@ -329,5 +329,17 @@ struct DatabaseMigrations {
                 t.add(column: "extraction_confidence", .double)
             }
         }
+
+        // MARK: - v16: Heartbeat insights table for daily AI-generated financial insights
+        migrator.registerMigration("v16") { db in
+            try db.create(table: "heartbeat_insights") { t in
+                t.primaryKey("id", .text)
+                t.column("date", .text).notNull().unique()
+                t.column("content", .text).notNull().defaults(to: "")
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("is_read", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+        }
     }
 }

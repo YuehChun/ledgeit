@@ -86,10 +86,10 @@ Customize your AI financial advisor's persona, budget limits, and behavior with 
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Swift 6.0 |
-| UI | SwiftUI (macOS 14+) |
+| Language | Swift 6.2 |
+| UI | SwiftUI (macOS 15+) |
 | Database | SQLite via [GRDB](https://github.com/groue/GRDB.swift) 7.0 |
-| AI/LLM | [OpenRouter](https://openrouter.ai) API (Claude, GPT, etc.) |
+| AI/LLM | Multi-provider: OpenAI-compatible, Anthropic, Google Gemini (see [AI Providers](#ai-provider-setup)) |
 | Embeddings | multilingual-e5-small (local, on-device) |
 | Vector Search | sqlite-vec + FTS5 hybrid search |
 | Auth | Google OAuth 2.0 (Desktop app flow) |
@@ -127,8 +127,15 @@ EmbeddingService (multilingual-e5-small + sqlite-vec + FTS5)
   │
   ▼
 FinancialQueryService (shared query layer)
-  ├──► ChatEngine + OpenRouter (streaming + tool calling) ──► ChatView
+  ├──► ChatEngine + SessionFactory (streaming + tool calling) ──► ChatView
+  │     └── AgentFileManager + AgentPromptBuilder (memory & identity)
   └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
+
+AI Provider Layer (SessionFactory)
+  ├── OpenAICompatibleSession (OpenAI, OpenRouter, Ollama, Groq, VibeProxy, etc.)
+  ├── AnthropicSession (direct Anthropic API)
+  ├── GoogleSession (Gemini API)
+  └── AIProviderConfigStore (UserDefaults + Keychain)
 ```
 
 ### AI Advisor Flow
@@ -192,8 +199,18 @@ LedgeIt/
 │   │   ├── StatementService.swift    # PDF statement decrypt + extract pipeline
 │   │   ├── GoalGenerationService.swift # Background goal generation
 │   │   ├── EmbeddingService.swift    # Multilingual embeddings + hybrid search
-│   │   ├── ChatEngine.swift          # AI chat with tool-calling loop
-│   │   └── FinancialQueryService.swift # Shared query layer for chat & MCP
+│   │   ├── ChatEngine.swift          # AI chat with tool-calling loop + memory tools
+│   │   ├── FinancialQueryService.swift # Shared query layer for chat & MCP
+│   │   ├── LLM/
+│   │   │   ├── SessionFactory.swift         # Creates sessions per provider
+│   │   │   ├── LLMSession.swift             # Unified protocol
+│   │   │   ├── OpenAICompatibleSession.swift # OpenAI/OpenRouter/Ollama/VibeProxy
+│   │   │   ├── AnthropicSession.swift       # Direct Anthropic API
+│   │   │   ├── GoogleSession.swift          # Google Gemini API
+│   │   │   └── LLMTypes.swift               # LLMMessage, LLMToolCall, LLMStreamEvent
+│   │   └── Agent/
+│   │       ├── AgentFileManager.swift       # Memory file I/O (read/write/search)
+│   │       └── AgentPromptBuilder.swift     # System prompt assembly from memory
 │   ├── Views/
 │   │   ├── ContentView.swift         # Sidebar + auto-sync
 │   │   ├── DashboardView.swift       # Financial dashboard
@@ -234,10 +251,10 @@ LedgeIt/
 
 ### Prerequisites
 
-- macOS 14.0+
-- Swift 6.0+ toolchain
+- macOS 15.0+
+- Swift 6.2+ toolchain
 - A Google Cloud project with Gmail API and Google Calendar API enabled
-- An [OpenRouter](https://openrouter.ai) API key
+- At least one AI provider (see [AI Provider Setup](#ai-provider-setup))
 
 ### 1. Google Cloud Setup
 
@@ -265,9 +282,10 @@ open .build/LedgeIt.app
 
 1. Open **Settings** from the sidebar
 2. Enter your Google Client ID and Client Secret
-3. Enter your OpenRouter API key
-4. Click **Save & Connect Google** — this opens the OAuth flow in your browser
-5. Once connected, the app automatically syncs and processes emails
+3. Configure at least one AI provider (see [AI Provider Setup](#ai-provider-setup))
+4. Assign models to each use case (classification, extraction, advisor, chat, statement)
+5. Click **Save & Connect Google** — this opens the OAuth flow in your browser
+6. Once connected, the app automatically syncs and processes emails
 
 ### Install to Applications
 
@@ -275,6 +293,85 @@ open .build/LedgeIt.app
 bash build.sh
 cp -R .build/LedgeIt.app /Applications/LedgeIt.app
 ```
+
+## AI Provider Setup
+
+LedgeIt supports multiple AI providers through a unified `SessionFactory`. Each use case (classification, extraction, advisor, chat, statement) can be assigned a different provider and model.
+
+### Built-in Providers
+
+| Provider | Base URL | API Key | Notes |
+|----------|----------|---------|-------|
+| OpenAI | `https://api.openai.com/v1` | Required | GPT-4o, GPT-4.1, o3-mini, etc. |
+| OpenRouter | `https://openrouter.ai/api/v1` | Required | Access to Claude, GPT, Gemini, and 200+ models |
+| VibeProxy | `http://127.0.0.1:8318/v1` | Not needed | Local proxy using OAuth sessions ([vibeproxy](https://github.com/automazeio/vibeproxy)) |
+| Ollama | `http://localhost:11434/v1` | Not needed | Local models (Llama, Mistral, etc.) |
+
+You can also add custom OpenAI-compatible endpoints (Groq, Together, Azure, etc.).
+
+### Model Catalog
+
+Settings provides a grouped model picker for common models:
+
+- **Claude**: claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514, claude-3-5-haiku-20241022
+- **GPT**: gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini, o3-mini, o1
+- **Gemini**: gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-pro
+
+For OpenRouter, models are automatically prefixed (e.g., `anthropic/claude-sonnet-4-6`). Non-catalog models can be entered manually via a "Custom..." option.
+
+### Model Assignment
+
+Each use case has an independent provider + model assignment:
+
+| Use Case | Description | Recommended |
+|----------|-------------|-------------|
+| Classification | Email intent scoring (financial or not) | Fast model (GPT-4.1-mini, Haiku) |
+| Extraction | Transaction data extraction from emails | Capable model (Claude Sonnet, GPT-4o) |
+| Advisor | Financial analysis, goals, reports | Capable model (Claude Sonnet, GPT-4o) |
+| Chat | AI chat interface with tool calling | Best available (Claude Sonnet, GPT-4.1) |
+| Statement | PDF statement parsing | Capable model with long context |
+
+## AI Agent Memory System
+
+The AI chat advisor has a persistent memory and identity system that allows it to learn about you over time. Memory is stored as Markdown files in `~/Library/Application Support/LedgeIt/agent/`.
+
+### File Structure
+
+```
+agent/
+├── PERSONA.md              # Advisor identity, tone, boundary rules
+├── USER.md                 # User profile (preferences, goals, language)
+└── memory/
+    ├── MEMORY.md           # Long-term facts (salary day, mortgage, etc.)
+    ├── active-context.md   # Current task or conversation focus
+    ├── 2026-03-12.md       # Daily interaction log
+    └── 2026-03-11.md       # Previous day's log
+```
+
+### Memory Tools
+
+The AI advisor can read and write its own memory during conversations:
+
+| Tool | Description |
+|------|------------|
+| `memory_save` | Save to user_profile, long_term, active_context, or daily log |
+| `memory_search` | Keyword search across all memory files |
+| `memory_get` | Read a full memory file |
+
+The AI decides when to save based on guidelines in PERSONA.md — for example, saving user preferences to the profile, financial patterns to long-term memory, and conversation notes to daily logs.
+
+### Prompt Assembly
+
+On each chat message, `AgentPromptBuilder` assembles a system prompt from all memory files with priority-based truncation:
+
+1. **PERSONA** (identity & rules)
+2. **USER PROFILE** (preferences & goals)
+3. **ACTIVE CONTEXT** (current task)
+4. **DAILY LOGS** (today + yesterday)
+5. **LONG-TERM MEMORY** (accumulated facts)
+6. **FINANCIAL SNAPSHOT** (live account data)
+
+Per-file cap: 15,000 chars. Total cap: 50,000 chars. Lowest-priority sections are dropped if the total exceeds the cap.
 
 ## Email Processing Pipeline
 
@@ -323,7 +420,7 @@ Users can iteratively refine the advisor's behavior:
 
 ## AI Chat
 
-The Chat view provides a natural language interface for querying financial data. It uses OpenRouter (Claude Sonnet 4.5) with streaming responses and tool calling, powered by local RAG with multilingual embeddings.
+The Chat view provides a natural language interface for querying financial data. It supports any configured AI provider with streaming responses and tool calling, powered by local RAG with multilingual embeddings and persistent agent memory.
 
 ### Available Tools
 
@@ -337,8 +434,11 @@ The Chat view provides a natural language interface for querying financial data.
 | `get_upcoming_payments` | All unpaid credit card bills (including overdue) |
 | `get_goals` | Financial goals filtered by status |
 | `get_account_overview` | High-level account snapshot |
+| `memory_save` | Save information to agent memory (see [Agent Memory](#ai-agent-memory-system)) |
+| `memory_search` | Search across agent memory files |
+| `memory_get` | Read a full agent memory file |
 
-The system prompt includes a live financial snapshot so the LLM has context before tool use.
+The system prompt is dynamically assembled from the agent's memory files and a live financial snapshot.
 
 ## MCP Server
 

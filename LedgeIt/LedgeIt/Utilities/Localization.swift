@@ -251,6 +251,13 @@ struct L10n: Sendable {
         s("\(count) transaction\(count == 1 ? "" : "s")", "\(count) 筆交易")
     }
 
+    // MARK: - Insights
+
+    var insights: String { s("Insights", "洞察") }
+    var insightsNotUpdated: String { s("Not yet updated today", "今日尚未更新") }
+    var generatingInsights: String { s("Generating insights...", "正在生成洞察...") }
+    var noInsightsYet: String { s("No insights yet. They will appear after your first app launch with financial data.", "尚無洞察。在您有財務資料後首次啟動應用程式時將會出現。") }
+
     // MARK: - Chat
 
     var chat: String { s("Advisory", "諮詢助手") }
