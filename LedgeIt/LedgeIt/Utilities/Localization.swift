@@ -258,6 +258,37 @@ struct L10n: Sendable {
     var generatingInsights: String { s("Generating insights...", "正在生成洞察...") }
     var noInsightsYet: String { s("No insights yet. They will appear after your first app launch with financial data.", "尚無洞察。在您有財務資料後首次啟動應用程式時將會出現。") }
 
+    // MARK: - Memory Management
+
+    var memory: String { s("Memory", "記憶") }
+    var memoryManagement: String { s("Memory Management", "記憶管理") }
+    var memoryFiles: String { s("Memory Files", "記憶檔案") }
+    var memoryActions: String { s("Actions", "操作") }
+    var memoryStats: String { s("Stats & Settings", "統計與設定") }
+    var archiveOldLogs: String { s("Archive Old Logs", "歸檔舊日誌") }
+    var archiveComplete: String { s("Archive complete", "歸檔完成") }
+    func archiveCount(_ count: Int) -> String { s("\(count) daily logs archived", "已歸檔 \(count) 個日誌") }
+    var reorganizeMemory: String { s("Reorganize Memory", "整理記憶") }
+    var reorganizing: String { s("Reorganizing...", "正在整理...") }
+    var reorganizeComplete: String { s("Reorganization complete", "整理完成") }
+    var exportMemory: String { s("Export Memory", "匯出記憶") }
+    var importMemory: String { s("Import Memory", "匯入記憶") }
+    var exportSuccess: String { s("Memory exported successfully", "記憶匯出成功") }
+    var memoryImportSuccess: String { s("Memory imported successfully", "記憶匯入成功") }
+    var importConfirmTitle: String { s("Import Memory", "匯入記憶") }
+    var importConfirmMessage: String { s("This will replace all current memory files. A backup will be created first. Continue?", "這將替換所有目前的記憶檔案。會先建立備份。是否繼續？") }
+    var deleteMemoryFile: String { s("Delete File", "刪除檔案") }
+    func deleteMemoryConfirm(_ name: String) -> String { s("Delete \(name)? This cannot be undone.", "刪除 \(name)？此操作無法復原。") }
+    var autoArchive: String { s("Auto-Archive", "自動歸檔") }
+    var autoArchiveDescription: String { s("Automatically archive daily logs older than 30 days when count exceeds 30", "當日誌超過 30 個時，自動歸檔 30 天前的日誌") }
+    var dailyLogCount: String { s("Daily Logs", "每日日誌") }
+    var memoryFileSize: String { s("MEMORY.md Size", "MEMORY.md 大小") }
+    var totalMemorySize: String { s("Total Size", "總大小") }
+    var memoryPreview: String { s("Preview", "預覽") }
+    var memoryBefore: String { s("Before", "整理前") }
+    var memoryAfter: String { s("After", "整理後") }
+    var applyChanges: String { s("Apply", "套用") }
+
     // MARK: - Chat
 
     var chat: String { s("Advisory", "諮詢助手") }
