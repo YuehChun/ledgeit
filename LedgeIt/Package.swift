@@ -7,6 +7,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.0.16"),
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.19"),
     ],
     targets: [
         .target(
@@ -22,6 +23,7 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Embeddings", package: "swift-embeddings"),
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
                 "CSQLiteVec",
             ],
             path: "LedgeIt",
