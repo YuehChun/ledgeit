@@ -228,6 +228,40 @@ struct SettingsView: View {
                                 .disabled(googleClientID.isEmpty || googleClientSecret.isEmpty || isConnecting)
                             }
                         }
+
+                        SettingsSection(title: "Updates", icon: "arrow.triangle.2.circlepath", color: .purple) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Current Version")
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
+                                        .fontWeight(.medium)
+                                        .monospacedDigit()
+                                }
+                                .font(.callout)
+
+                                Divider()
+
+                                Toggle("Automatically check for updates", isOn: Binding(
+                                    get: {
+                                        (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates ?? true
+                                    },
+                                    set: { newValue in
+                                        (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates = newValue
+                                    }
+                                ))
+                                .font(.callout)
+
+                                Button {
+                                    (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+                                } label: {
+                                    Label("Check for Updates", systemImage: "arrow.clockwise")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .controlSize(.regular)
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity)
                 }
