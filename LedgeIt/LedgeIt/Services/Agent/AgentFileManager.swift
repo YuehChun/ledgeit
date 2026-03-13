@@ -22,7 +22,7 @@ final class AgentFileManager: Sendable {
 
     // MARK: - Paths
 
-    private let baseDir: URL
+    let baseDir: URL
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -202,6 +202,47 @@ final class AgentFileManager: Sendable {
         }
 
         return files.filter { fm.fileExists(atPath: $0.path) }
+    }
+
+    // MARK: - File Listing
+
+    struct MemoryFileInfo: Sendable {
+        let url: URL
+        let fileName: String
+        let fileSize: Int64
+        let modifiedDate: Date
+    }
+
+    func listAllFiles() -> [MemoryFileInfo] {
+        ensureSetup()
+        let fm = FileManager.default
+        var results: [MemoryFileInfo] = []
+
+        func addFiles(in directory: URL) {
+            guard let contents = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else { return }
+            for url in contents {
+                // Skip hidden files and embedding cache
+                if url.lastPathComponent.hasPrefix(".") { continue }
+
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: url.path, isDirectory: &isDir) {
+                    if isDir.boolValue {
+                        addFiles(in: url)
+                    } else {
+                        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                        results.append(MemoryFileInfo(
+                            url: url,
+                            fileName: url.lastPathComponent,
+                            fileSize: Int64(values?.fileSize ?? 0),
+                            modifiedDate: values?.contentModificationDate ?? Date.distantPast
+                        ))
+                    }
+                }
+            }
+        }
+
+        addFiles(in: baseDir)
+        return results.sorted { $0.fileName < $1.fileName }
     }
 
     // MARK: - Default Content
