@@ -7,6 +7,7 @@ actor ChatEngine {
     private let queryService: FinancialQueryService
     private let embeddingService: EmbeddingService
     private let agentFileManager = AgentFileManager()
+    private let agentMemorySearch: AgentMemorySearch
     private var conversationHistory: [LLMMessage] = []
     private let maxToolIterations = 5
 
@@ -16,6 +17,10 @@ actor ChatEngine {
     ) {
         self.queryService = queryService
         self.embeddingService = embeddingService
+        self.agentMemorySearch = AgentMemorySearch(
+            embeddingService: embeddingService,
+            agentFileManager: agentFileManager
+        )
     }
 
     // MARK: - Public API
@@ -533,11 +538,11 @@ actor ChatEngine {
             guard !query.isEmpty else {
                 return "Error: query parameter is required"
             }
-            let searchResults = agentFileManager.search(query: query, scope: scope)
+            let searchResults = await agentMemorySearch.search(query: query, scope: scope)
             if searchResults.isEmpty {
                 return "No memory entries found for: \(query)"
             }
-            return searchResults.map { "[\($0.fileName):\($0.lineNumber)] \($0.content)" }.joined(separator: "\n\n")
+            return searchResults.map { "[\($0.fileName):\($0.lineNumber)] (score: \(String(format: "%.2f", $0.score))) \($0.content)" }.joined(separator: "\n\n")
 
         case "memory_get":
             let fileStr = args["file"] as? String ?? ""
