@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct LedgeItApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var database = AppDatabase.shared
 
     init() {
