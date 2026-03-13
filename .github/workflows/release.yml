@@ -43,6 +43,56 @@ jobs:
           shasum -a 256 "LedgeIt-${{ steps.version.outputs.version }}.dmg" > "LedgeIt-${{ steps.version.outputs.version }}.dmg.sha256"
           cat "LedgeIt-${{ steps.version.outputs.version }}.dmg.sha256"
 
+      - name: Download Sparkle CLI
+        run: |
+          SPARKLE_VERSION="2.7.5"
+          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-for-Swift-Package-Manager.zip" -o sparkle.zip
+          unzip -q sparkle.zip -d sparkle-tools
+          chmod +x sparkle-tools/bin/sign_update
+
+      - name: Sign DMG with EdDSA
+        working-directory: LedgeIt/.build
+        id: sign
+        run: |
+          echo "${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}" > /tmp/sparkle_private_key
+          SIGN_OUTPUT=$(../../sparkle-tools/bin/sign_update "LedgeIt-${{ steps.version.outputs.version }}.dmg" -f /tmp/sparkle_private_key)
+          rm -f /tmp/sparkle_private_key
+          ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          FILE_LENGTH=$(echo "$SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+          echo "ed_signature=$ED_SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "file_length=$FILE_LENGTH" >> "$GITHUB_OUTPUT"
+
+      - name: Update appcast.xml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ED_SIG="${{ steps.sign.outputs.ed_signature }}"
+          FILE_LEN="${{ steps.sign.outputs.file_length }}"
+          DMG_URL="https://github.com/YuehChun/ledgeit/releases/download/v${VERSION}/LedgeIt-${VERSION}.dmg"
+
+          NEW_ITEM=$(cat <<ITEM
+              <item>
+                <title>Version ${VERSION}</title>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+                <enclosure url="${DMG_URL}"
+                           length="${FILE_LEN}"
+                           type="application/octet-stream"
+                           sparkle:edSignature="${ED_SIG}" />
+              </item>
+          ITEM
+          )
+
+          # Insert new item before </channel>
+          awk -v item="$NEW_ITEM" '/<\/channel>/{print item}1' appcast.xml > appcast_tmp.xml
+          mv appcast_tmp.xml appcast.xml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "chore: update appcast.xml for v${VERSION}"
+          git push origin HEAD:main
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
