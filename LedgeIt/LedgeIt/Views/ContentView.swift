@@ -60,9 +60,8 @@ struct ContentView: View {
                             .tag(SidebarItem.dashboard)
                         sidebarRow(l10n.chat, icon: SidebarItem.chat.icon)
                             .tag(SidebarItem.chat)
-                        sidebarRow(l10n.insights, icon: SidebarItem.insights.icon)
+                        sidebarRow(l10n.insights, icon: SidebarItem.insights.icon, badge: unreadInsightCount)
                             .tag(SidebarItem.insights)
-                            .badge(unreadInsightCount)
                     }
                     Section(l10n.data) {
                         sidebarRow(l10n.transactions, icon: SidebarItem.transactions.icon)
@@ -141,12 +140,15 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 960, minHeight: 640)
-            .onAppear {
+            .task {
+                await HeartbeatService.shared.runIfNeeded()
+                await loadUnreadInsightCount()
                 triggerAutoSync()
                 startSyncTimer()
-                Task {
-                    await HeartbeatService.shared.runIfNeeded()
-                    await loadUnreadInsightCount()
+            }
+            .onChange(of: selectedItem) { _, newValue in
+                if newValue != .insights {
+                    Task { await loadUnreadInsightCount() }
                 }
             }
             .onDisappear {
@@ -167,11 +169,21 @@ struct ContentView: View {
         }
     }
 
-    private func sidebarRow(_ title: String, icon: String) -> some View {
+    private func sidebarRow(_ title: String, icon: String, badge: Int = 0) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .frame(width: 20)
             Text(title)
+            if badge > 0 {
+                Spacer()
+                Text("\(badge)")
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+            }
         }
     }
 
