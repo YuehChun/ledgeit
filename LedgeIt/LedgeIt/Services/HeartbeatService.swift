@@ -66,6 +66,16 @@ actor HeartbeatService {
             }
             heartbeatLogger.info("Daily insight generated successfully")
 
+            // Auto-archive old daily logs if needed
+            do {
+                let archived = try await AgentMemoryConsolidator.shared.consolidateIfNeeded(fileManager: agentFileManager)
+                if archived {
+                    heartbeatLogger.info("Daily logs archived successfully")
+                }
+            } catch {
+                heartbeatLogger.warning("Daily log consolidation failed: \(error.localizedDescription)")
+            }
+
         } catch {
             heartbeatLogger.error("Heartbeat failed: \(error.localizedDescription)")
             let today = todayString()
