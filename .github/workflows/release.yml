@@ -45,7 +45,7 @@ jobs:
 
       - name: Download Sparkle CLI
         run: |
-          SPARKLE_VERSION="2.7.5"
+          SPARKLE_VERSION="2.9.0"
           curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" -o sparkle.tar.xz
           mkdir -p sparkle-tools
           tar -xf sparkle.tar.xz -C sparkle-tools

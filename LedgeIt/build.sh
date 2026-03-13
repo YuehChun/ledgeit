@@ -59,7 +59,7 @@ cat > "${CONTENTS}/Info.plist" << PLIST
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/YuehChun/ledgeit/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
-    <string>PLACEHOLDER_PUBLIC_KEY</string>
+    <string>kZOqKEU+ZDo845aJR8eJ5OvhoWDObK1I0+e8XPkoJFY=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>SUScheduledCheckInterval</key>
