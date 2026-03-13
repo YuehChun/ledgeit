@@ -56,6 +56,14 @@ cat > "${CONTENTS}/Info.plist" << PLIST
     </dict>
     <key>com.apple.security.network.client</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/YuehChun/ledgeit/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>PLACEHOLDER_PUBLIC_KEY</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>
 PLIST
