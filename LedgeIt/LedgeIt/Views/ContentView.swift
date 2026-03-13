@@ -13,6 +13,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case advisor = "Advisor"
     case goals = "Goals"
     case insights = "Insights"
+    case memory = "Memory"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -30,6 +31,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .advisor: return "brain.head.profile.fill"
         case .goals: return "target"
         case .insights: return "brain.head.profile"
+        case .memory: return "externaldrive.fill.badge.person.crop"
         case .settings: return "gearshape.fill"
         }
     }
@@ -81,6 +83,8 @@ struct ContentView: View {
                             .tag(SidebarItem.goals)
                     }
                     Section {
+                        sidebarRow(l10n.memory, icon: SidebarItem.memory.icon)
+                            .tag(SidebarItem.memory)
                         sidebarRow(l10n.settings, icon: SidebarItem.settings.icon)
                             .tag(SidebarItem.settings)
                         sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
@@ -125,6 +129,8 @@ struct ContentView: View {
                     GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
                 case .insights:
                     InsightsView()
+                case .memory:
+                    MemoryManagementView()
                 case .settings:
                     SettingsView(onKeySaved: {
                         triggerAutoSync()
