@@ -6,6 +6,7 @@ struct MCPServerRunner {
     // MARK: - Entry Point
 
     static func run() async {
+        guard await LicenseManager.shared.isPro else { return }
         let dbPath = parseDBPath()
         guard let dbPath else {
             writeError("Usage: ledgeit-mcp --db <path-to-database>")

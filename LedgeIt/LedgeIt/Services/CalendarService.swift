@@ -45,6 +45,7 @@ actor CalendarService {
         date: String,
         description: String? = nil
     ) async throws -> CalendarEventResponse {
+        guard await LicenseManager.shared.isPro else { throw CalendarError.unauthorized }
         let token = try await accessTokenProvider()
         let url = URL(string: "\(baseURL)/calendars/primary/events")!
 
