@@ -16,6 +16,9 @@ enum KeychainService: Sendable {
         case googleRefreshToken = "google_refresh_token"
         case anthropicAPIKey = "anthropic_api_key"
         case googleAIAPIKey = "google_ai_api_key"
+        case licenseKey = "license_key"
+        case licenseValidatedAt = "license_validated_at"
+        case trialStartDate = "trial_start_date"
     }
 
     /// Call once at app startup to load all Keychain entries with a single prompt.
