@@ -54,6 +54,18 @@ struct LicenseSettingsView: View {
                 }
                 .foregroundStyle(.red)
             }
+
+            Divider()
+
+            HStack {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(.pink)
+                Text("Support LedgeIt")
+                    .font(.subheadline)
+                Spacer()
+                Link("GitHub Sponsors", destination: URL(string: "https://github.com/sponsors/YuehChun")!)
+                    .font(.subheadline)
+            }
         }
         .padding()
     }
