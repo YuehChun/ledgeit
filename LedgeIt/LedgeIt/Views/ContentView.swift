@@ -114,6 +114,7 @@ struct ContentView: View {
                     DashboardView()
                 case .chat:
                     ChatView()
+                        .requiresPro(featureName: "AI Chat")
                 case .transactions:
                     TransactionListView()
                 case .review:
@@ -126,14 +127,19 @@ struct ContentView: View {
                     StatementsView()
                 case .analysis:
                     AnalysisDashboardView()
+                        .requiresPro(featureName: "Financial Analysis")
                 case .advisor:
                     AdvisorSettingsView()
+                        .requiresPro(featureName: "AI Advisor Settings")
                 case .goals:
                     GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
+                        .requiresPro(featureName: "Goal Tracking")
                 case .insights:
                     InsightsView()
+                        .requiresPro(featureName: "Daily Insights")
                 case .memory:
                     MemoryManagementView()
+                        .requiresPro(featureName: "Agent Memory")
                 case .settings:
                     SettingsView(onKeySaved: {
                         triggerAutoSync()
