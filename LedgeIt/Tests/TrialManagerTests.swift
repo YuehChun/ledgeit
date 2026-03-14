@@ -7,7 +7,8 @@ struct TrialManagerTests {
         let manager = await TrialManager(
             now: { Date(timeIntervalSince1970: 1000000) },
             loadTrialStart: { nil },
-            saveTrialStart: { _ in }
+            saveTrialStart: { _ in },
+            isExistingUser: { false }
         )
         await #expect(manager.isTrialActive == true)
     }
@@ -18,7 +19,8 @@ struct TrialManagerTests {
         let manager = await TrialManager(
             now: { now },
             loadTrialStart: { startDate },
-            saveTrialStart: { _ in }
+            saveTrialStart: { _ in },
+            isExistingUser: { false }
         )
         await #expect(manager.isTrialActive == false)
     }
@@ -29,7 +31,8 @@ struct TrialManagerTests {
         let manager = await TrialManager(
             now: { now },
             loadTrialStart: { startDate },
-            saveTrialStart: { _ in }
+            saveTrialStart: { _ in },
+            isExistingUser: { false }
         )
         await #expect(manager.isTrialActive == true)
         await #expect(manager.daysRemaining == 4)
@@ -41,9 +44,47 @@ struct TrialManagerTests {
         let manager = await TrialManager(
             now: { Date(timeIntervalSince1970: 1000000) },
             loadTrialStart: { nil },
-            saveTrialStart: { box.value = $0 }
+            saveTrialStart: { box.value = $0 },
+            isExistingUser: { false }
         )
         _ = await manager.isTrialActive
         #expect(box.value != nil)
+    }
+
+    // Existing user migration tests
+    @Test func existingUserGets90DayTrial() async {
+        let manager = await TrialManager(
+            now: { Date(timeIntervalSince1970: 1000000) },
+            loadTrialStart: { nil },
+            saveTrialStart: { _ in },
+            isExistingUser: { true }
+        )
+        await #expect(manager.isTrialActive == true)
+        await #expect(manager.daysRemaining == 90)
+    }
+
+    @Test func existingUser60DaysIn_still30DaysLeft() async {
+        let startDate = Date(timeIntervalSince1970: 1000000)
+        let now = startDate.addingTimeInterval(60 * 24 * 3600) // 60 days later
+        let manager = await TrialManager(
+            now: { now },
+            loadTrialStart: { startDate },
+            saveTrialStart: { _ in },
+            isExistingUser: { true }
+        )
+        await #expect(manager.isTrialActive == true)
+        await #expect(manager.daysRemaining == 30)
+    }
+
+    @Test func existingUserTrialExpiredAfter90Days() async {
+        let startDate = Date(timeIntervalSince1970: 1000000)
+        let now = startDate.addingTimeInterval(91 * 24 * 3600) // 91 days later
+        let manager = await TrialManager(
+            now: { now },
+            loadTrialStart: { startDate },
+            saveTrialStart: { _ in },
+            isExistingUser: { true }
+        )
+        await #expect(manager.isTrialActive == false)
     }
 }
