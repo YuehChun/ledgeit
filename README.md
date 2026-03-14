@@ -81,6 +81,11 @@ Customize your AI financial advisor's persona, budget limits, and behavior with 
 17. **PDF Statement Import** — Decrypt and parse password-protected credit card PDFs with multi-layer LLM extraction
 18. **AI Progress UX** — Animated progress indicators with step-by-step checklists for all AI operations
 19. **Bilingual** — Full English and Traditional Chinese (繁體中文) support for UI and AI-generated content
+20. **Heartbeat Insights** — Daily AI-generated financial insights with unread badge in sidebar
+21. **Memory Management** — Browse, delete, export/import agent memory files with auto-archive for daily logs
+22. **Semantic Memory Search** — Temporal decay + MMR re-ranking for memory retrieval (half-life 30 days, embedding cache)
+23. **Auto-Update** — Automatic update detection and one-click install via [Sparkle 2](https://sparkle-project.org), with EdDSA signature verification
+24. **Onboarding Chat** — Guided onboarding flow with step-by-step chat wizard for first-time setup
 
 ## Tech Stack
 
@@ -95,6 +100,7 @@ Customize your AI financial advisor's persona, budget limits, and behavior with 
 | Auth | Google OAuth 2.0 (Desktop app flow) |
 | Package Manager | Swift Package Manager |
 | Secrets | macOS Keychain |
+| Auto-Update | [Sparkle 2](https://sparkle-project.org) (EdDSA signed) |
 
 ## Architecture
 
@@ -129,7 +135,13 @@ EmbeddingService (multilingual-e5-small + sqlite-vec + FTS5)
 FinancialQueryService (shared query layer)
   ├──► ChatEngine + SessionFactory (streaming + tool calling) ──► ChatView
   │     └── AgentFileManager + AgentPromptBuilder (memory & identity)
+  │           ├── AgentMemorySearch (semantic + temporal decay + MMR)
+  │           ├── AgentMemoryConsolidator (daily log archival)
+  │           └── AgentMemoryExporter (ZIP export/import)
   └──► MCPServer (stdio JSON-RPC) ──► Third-party AI agents
+
+HeartbeatService ──► Daily AI insights ──► InsightsView
+Sparkle 2 (SPUStandardUpdaterController) ──► Auto-update from GitHub Releases
 
 AI Provider Layer (SessionFactory)
   ├── OpenAICompatibleSession (OpenAI, OpenRouter, Ollama, Groq, VibeProxy, etc.)
@@ -156,6 +168,7 @@ User selects persona (conservative/moderate/aggressive/custom)
 LedgeIt/
 ├── LedgeIt/
 │   ├── LedgeItApp.swift              # App entry point
+│   ├── AppDelegate.swift             # Sparkle auto-update controller
 │   ├── Database/
 │   │   ├── AppDatabase.swift         # GRDB database setup
 │   │   └── DatabaseMigrations.swift  # Schema migrations (v1-v14)
@@ -208,9 +221,13 @@ LedgeIt/
 │   │   │   ├── AnthropicSession.swift       # Direct Anthropic API
 │   │   │   ├── GoogleSession.swift          # Google Gemini API
 │   │   │   └── LLMTypes.swift               # LLMMessage, LLMToolCall, LLMStreamEvent
+│   │   ├── HeartbeatService.swift    # Daily AI insight generation
 │   │   └── Agent/
 │   │       ├── AgentFileManager.swift       # Memory file I/O (read/write/search)
-│   │       └── AgentPromptBuilder.swift     # System prompt assembly from memory
+│   │       ├── AgentPromptBuilder.swift     # System prompt assembly from memory
+│   │       ├── AgentMemorySearch.swift      # Semantic search + temporal decay + MMR
+│   │       ├── AgentMemoryConsolidator.swift # Daily log archival & reorganization
+│   │       └── AgentMemoryExporter.swift    # ZIP export/import
 │   ├── Views/
 │   │   ├── ContentView.swift         # Sidebar + auto-sync
 │   │   ├── DashboardView.swift       # Financial dashboard
@@ -228,6 +245,12 @@ LedgeIt/
 │   │   │   └── GoalsView.swift              # Goal tracking + progress
 │   │   ├── Statements/
 │   │   │   └── StatementsView.swift       # PDF statement import + parsing
+│   │   ├── Memory/
+│   │   │   └── MemoryManagementView.swift # Memory file browser, export/import, stats
+│   │   ├── Insights/
+│   │   │   └── InsightsView.swift         # Daily AI-generated financial insights
+│   │   ├── Onboarding/
+│   │   │   └── OnboardingChatView.swift   # First-time setup chat wizard
 │   │   └── Components/              # CategoryIcon, CategoryBadge, AmountText, AIProgressView
 │   ├── MCP/
 │   │   ├── MCPServer.swift           # stdio JSON-RPC MCP server
@@ -355,10 +378,19 @@ The AI advisor can read and write its own memory during conversations:
 | Tool | Description |
 |------|------------|
 | `memory_save` | Save to user_profile, long_term, active_context, or daily log |
-| `memory_search` | Keyword search across all memory files |
+| `memory_search` | Semantic search with temporal decay and MMR re-ranking |
 | `memory_get` | Read a full memory file |
 
 The AI decides when to save based on guidelines in PERSONA.md — for example, saving user preferences to the profile, financial patterns to long-term memory, and conversation notes to daily logs.
+
+### Memory Management
+
+The Memory sidebar provides a UI for managing agent memory:
+
+- **File Browser** — View all memory files with expandable previews, delete non-essential files
+- **Auto-Archive** — Daily logs older than 30 days are automatically consolidated into monthly summaries
+- **Reorganize** — LLM-powered reorganization of MEMORY.md with before/after preview
+- **Export/Import** — ZIP export/import of all memory files for backup or transfer
 
 ### Prompt Assembly
 
