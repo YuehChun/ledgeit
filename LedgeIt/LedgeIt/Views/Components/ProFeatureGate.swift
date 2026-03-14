@@ -3,10 +3,28 @@ import SwiftUI
 struct ProFeatureGate: ViewModifier {
     @State private var licenseManager = LicenseManager.shared
     let featureName: String
+    let allowReadOnly: Bool
 
     func body(content: Content) -> some View {
         if licenseManager.isPro {
             content
+        } else if allowReadOnly {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "eye.fill")
+                    Text("Read-only — upgrade to Pro to edit")
+                        .font(.caption)
+                    Spacer()
+                    Link("Upgrade", destination: URL(string: "https://ledgeit.lemonsqueezy.com")!)
+                        .font(.caption.bold())
+                }
+                .padding(8)
+                .background(.orange.opacity(0.1))
+
+                content
+                    .disabled(true)
+                    .opacity(0.8)
+            }
         } else {
             upgradePrompt
         }
@@ -44,7 +62,7 @@ struct ProFeatureGate: ViewModifier {
 }
 
 extension View {
-    func requiresPro(featureName: String = "") -> some View {
-        modifier(ProFeatureGate(featureName: featureName))
+    func requiresPro(featureName: String = "", allowReadOnly: Bool = false) -> some View {
+        modifier(ProFeatureGate(featureName: featureName, allowReadOnly: allowReadOnly))
     }
 }
