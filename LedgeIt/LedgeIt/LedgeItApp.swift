@@ -17,6 +17,9 @@ struct LedgeItApp: App {
             ContentView()
                 .environment(database)
                 .task {
+                    await LicenseManager.shared.validate()
+                }
+                .task {
                     print("[EmbeddingService] Starting batch indexing task...")
                     let embeddingService = EmbeddingService()
                     do {

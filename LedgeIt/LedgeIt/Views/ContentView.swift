@@ -89,6 +89,10 @@ struct ContentView: View {
                         sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
                             .tag(SidebarItem.advisor)
                     }
+
+                    if case .trial = LicenseManager.shared.status {
+                        TrialBannerView(daysRemaining: TrialManager.shared.daysRemaining)
+                    }
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200)
                 .listStyle(.sidebar)
