@@ -22,7 +22,7 @@ A daily, narrative-style spending diary that uses the user's selected AdvisorPer
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | Int64 (PK) | Auto-increment |
+| `id` | UUID (text PK) | Follows codebase convention |
 | `date` | String | YYYY-MM-DD, unique index — one entry per day |
 | `content` | String | LLM-generated diary text |
 | `personaId` | String | Persona ID used at generation time |
