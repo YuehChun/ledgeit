@@ -12,7 +12,7 @@ A daily, narrative-style spending diary that uses the user's selected AdvisorPer
 - Use the user's selected AdvisorPersona to shape the diary's tone and perspective
 - Display diary entries in CalendarView with a compact calendar (1/3) + diary panel (2/3) layout
 - Generate entries even on days with no transactions
-- Medium-length entries: 100–200 characters, with opening, spending recap, and closing reflection
+- Medium-length entries: 200–400 characters, with opening, spending recap, and closing reflection
 - Follow the app's language setting
 - Free feature (no Pro license required)
 
@@ -55,7 +55,7 @@ Actor-based async service, following the HeartbeatService pattern.
 ### Scheduling
 
 - Triggered on app launch via `generateIfNeeded()`
-- Backfill: look back 7 days for missing entries and generate them
+- Backfill: look back 7 days for missing or failed entries and generate them (serial execution to avoid LLM rate limits)
 - Cleanup: delete entries older than 90 days
 
 ### LLM Configuration
@@ -74,7 +74,7 @@ perspective as if you are the user reflecting on their day.
 Personality & tone: {persona.spendingPhilosophy}
 
 Rules:
-- Write 100-200 characters in {language}
+- Write 200-400 characters in {language}
 - Narrative style, like a real diary entry
 - Mention specific merchants and amounts naturally in the story
 - End with a brief reflection or feeling
