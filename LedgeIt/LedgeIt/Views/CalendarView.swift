@@ -8,6 +8,8 @@ struct CalendarView: View {
     @State private var cancellable: AnyDatabaseCancellable?
     @State private var bills: [CreditCardBill] = []
     @State private var billCancellable: AnyDatabaseCancellable?
+    @State private var diaryEntries: [SpendingDiaryEntry] = []
+    @State private var diaryCancellable: AnyDatabaseCancellable?
 
     private let calendar = Calendar.current
     private let dayFormatter: DateFormatter = {
@@ -18,11 +20,6 @@ struct CalendarView: View {
     private let monthFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMMM yyyy"
-        return f
-    }()
-    private let shortDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d, yyyy (EEEE)"
         return f
     }()
 
@@ -40,11 +37,6 @@ struct CalendarView: View {
         Set(transactionsByDate.keys)
     }
 
-    private var selectedDateTransactions: [Transaction] {
-        let key = dayFormatter.string(from: selectedDate)
-        return transactionsByDate[key] ?? []
-    }
-
     // Month stats
     private var monthTransactions: [Transaction] {
         let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth))!
@@ -60,34 +52,72 @@ struct CalendarView: View {
         monthTransactions.filter { $0.type?.lowercased() == "credit" }.reduce(0.0) { $0 + abs($1.amount) }
     }
 
+    // MARK: - Diary Helpers
+
+    private var diaryEntryForSelectedDate: SpendingDiaryEntry? {
+        let dateString = dayFormatter.string(from: selectedDate)
+        return diaryEntries.first { $0.date == dateString }
+    }
+
+    private var monthPrefix: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM"
+        return fmt.string(from: displayedMonth)
+    }
+
+    private func dateFromString(_ string: String) -> Date? {
+        dayFormatter.date(from: string)
+    }
+
+    private func hasDiaryEntry(for date: Date) -> Bool {
+        let dateString = dayFormatter.string(from: date)
+        return diaryEntries.contains { $0.date == dateString && $0.status == "completed" }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Top bar: month navigation + summary
             headerBar
             Divider()
 
-            // Main content: calendar left, transactions right
-            HStack(spacing: 0) {
-                // Left: calendar grid
-                ScrollView {
-                    VStack(spacing: 0) {
-                        calendarGrid
-                            .padding(20)
+            // Main content: compact calendar left, diary panel right
+            HStack(alignment: .top, spacing: 0) {
+                // Left: Compact calendar + month stats
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            calendarGrid
+                                .padding(12)
+                        }
                     }
+
+                    Divider()
+
+                    monthOverviewStats
                 }
-                .frame(minWidth: 420, idealWidth: 480)
-                .background(.background)
+                .frame(width: 260)
 
                 Divider()
 
-                // Right: selected day transactions
-                selectedDayDetail
-                    .frame(minWidth: 280, maxWidth: .infinity)
+                // Right: Diary panel
+                DiaryPanelView(
+                    selectedDate: selectedDate,
+                    transactions: transactions,
+                    bills: bills,
+                    diaryEntry: diaryEntryForSelectedDate
+                )
             }
         }
         .navigationTitle("Calendar")
-        .onAppear { startObservation() }
-        .onDisappear { cancellable?.cancel(); billCancellable?.cancel() }
+        .onAppear {
+            startObservation()
+            observeDiaryEntries()
+        }
+        .onDisappear {
+            cancellable?.cancel()
+            billCancellable?.cancel()
+            diaryCancellable?.cancel()
+        }
     }
 
     // MARK: - Header Bar
@@ -151,23 +181,22 @@ struct CalendarView: View {
 
     private var calendarGrid: some View {
         let weeks = weeksInMonth(displayedMonth)
-        let cellSize: CGFloat = 56
+        let cellSize: CGFloat = 32
 
-        return VStack(spacing: 4) {
+        return VStack(spacing: 2) {
             // Weekday headers
-            HStack(spacing: 4) {
-                ForEach(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], id: \.self) { day in
+            HStack(spacing: 2) {
+                ForEach(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"], id: \.self) { day in
                     Text(day)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: cellSize, height: 24)
+                        .frame(width: cellSize, height: 16)
                 }
             }
 
             // Day cells
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     ForEach(0..<7, id: \.self) { index in
                         if index < week.count {
                             dayCell(week[index], size: cellSize)
@@ -192,20 +221,20 @@ struct CalendarView: View {
                 Button {
                     selectedDate = date
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 1) {
                         Text("\(calendar.component(.day, from: date))")
-                            .font(.system(.title3, design: .rounded))
+                            .font(.system(size: 12, design: .rounded))
                             .fontWeight(isToday ? .bold : .regular)
                             .foregroundStyle(isSelected ? .white : isToday ? .blue : .primary)
 
-                        HStack(spacing: 3) {
+                        HStack(spacing: 2) {
                             if hasTxns {
                                 let txns = transactionsByDate[dateStr] ?? []
-                                let uniqueCats = Array(Set(txns.compactMap(\.category))).prefix(3)
+                                let uniqueCats = Array(Set(txns.compactMap(\.category))).prefix(2)
                                 ForEach(Array(uniqueCats.enumerated()), id: \.offset) { _, cat in
                                     Circle()
                                         .fill(isSelected ? .white.opacity(0.8) : CategoryStyle.style(forRawCategory: cat).color)
-                                        .frame(width: 6, height: 6)
+                                        .frame(width: 4, height: 4)
                                 }
                             }
                             if let dayBills = billsByDate[dateStr], !dayBills.isEmpty {
@@ -218,19 +247,20 @@ struct CalendarView: View {
                                     return .orange
                                 }()
                                 Image(systemName: "creditcard.fill")
-                                    .font(.system(size: 8))
+                                    .font(.system(size: 6))
                                     .foregroundStyle(isSelected ? .white.opacity(0.8) : billColor)
                             }
+                            if hasDiaryEntry(for: date) {
+                                Circle()
+                                    .fill(.blue)
+                                    .frame(width: 4, height: 4)
+                            }
                         }
-                        .frame(height: 6)
-
-                        if !hasTxns && billsByDate[dateStr] == nil {
-                            Color.clear.frame(height: 0)
-                        }
+                        .frame(height: 4)
                     }
                     .frame(width: size, height: size)
                     .background(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 6)
                             .fill(isSelected ? .blue : isToday ? .blue.opacity(0.08) : .clear)
                     )
                 }
@@ -242,126 +272,32 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: - Selected Day Detail
+    // MARK: - Month Overview Stats
 
-    private var selectedDayDetail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Date header
-            HStack {
-                Text(shortDateFormatter.string(from: selectedDate))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                if !selectedDateTransactions.isEmpty {
-                    let dayTotal = selectedDateTransactions.reduce(0.0) { sum, tx in
-                        let sign: Double = tx.type?.lowercased() == "credit" ? 1 : -1
-                        return sum + sign * abs(tx.amount)
-                    }
-                    Text(String(format: "Net: %.0f", dayTotal))
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(dayTotal >= 0 ? .green : .red)
-                        .monospacedDigit()
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-
-            let dateStr = dayFormatter.string(from: selectedDate)
-            let dayBills = billsByDate[dateStr] ?? []
-            let hasContent = !selectedDateTransactions.isEmpty || !dayBills.isEmpty
-
-            if !hasContent {
-                Spacer()
-                HStack {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.quaternary)
-                        Text("No transactions on this day")
-                            .font(.callout)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                }
-                Spacer()
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Due date bills
-                        if !dayBills.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Payment Due")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.orange)
-
-                                ForEach(dayBills) { bill in
-                                    HStack {
-                                        Image(systemName: "creditcard.fill")
-                                            .foregroundStyle(.orange)
-                                            .frame(width: 20)
-                                        Text(bill.bankName)
-                                            .font(.system(size: 13, weight: .medium))
-                                        Spacer()
-                                        if bill.isPaid {
-                                            Text("PAID")
-                                                .font(.system(size: 9, weight: .bold))
-                                                .foregroundStyle(.white)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 1)
-                                                .background(.green, in: Capsule())
-                                        }
-                                        Text("\(bill.currency) \(String(format: "%.0f", bill.amountDue))")
-                                            .font(.system(size: 12, design: .monospaced))
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-
-                            Divider()
-                        }
-
-                        ForEach(selectedDateTransactions) { tx in
-                            HStack(spacing: 8) {
-                                if let cat = tx.category {
-                                    CategoryIcon(category: cat, size: 20)
-                                } else {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(tx.type?.lowercased() == "credit" ? .green : .red.opacity(0.6))
-                                        .frame(width: 3, height: 24)
-                                }
-
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(tx.merchant ?? "Unknown")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .lineLimit(1)
-                                    if let desc = tx.description, !desc.isEmpty {
-                                        Text(desc)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-
-                                Spacer(minLength: 4)
-
-                                AmountText(amount: tx.amount, currency: tx.currency, type: tx.type)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-
-                            Divider()
-                                .padding(.leading, 24)
-                        }
-                    }
-                }
-            }
+    @ViewBuilder
+    private var monthOverviewStats: some View {
+        let monthTxns = transactions.filter { tx in
+            guard let txDate = dateFromString(tx.transactionDate ?? "") else { return false }
+            return calendar.isDate(txDate, equalTo: displayedMonth, toGranularity: .month)
         }
+        let totalSpending = monthTxns.filter { $0.type?.lowercased() != "credit" }.reduce(0.0) { $0 + abs($1.amount) }
+        let diaryCount = diaryEntries.filter { $0.date.hasPrefix(monthPrefix) && $0.status == "completed" }.count
+        let daysInMonth = calendar.range(of: .day, in: .month, for: displayedMonth)?.count ?? 30
+        let dailyAvg = totalSpending / Double(max(1, daysInMonth))
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Monthly Overview")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            LabeledContent("Total Spending", value: "$\(String(format: "%.0f", totalSpending))")
+                .font(.caption)
+            LabeledContent("Diary Entries", value: "\(diaryCount)")
+                .font(.caption)
+            LabeledContent("Daily Avg", value: "$\(String(format: "%.0f", dailyAvg))")
+                .font(.caption)
+        }
+        .padding(12)
     }
 
     // MARK: - Helpers
@@ -430,5 +366,17 @@ struct CalendarView: View {
         } onChange: { newBills in
             bills = newBills
         }
+    }
+
+    private func observeDiaryEntries() {
+        diaryCancellable = ValueObservation
+            .tracking { db in
+                try SpendingDiaryEntry
+                    .order(SpendingDiaryEntry.Columns.date.desc)
+                    .fetchAll(db)
+            }
+            .start(in: AppDatabase.shared.db, onError: { _ in }, onChange: { entries in
+                diaryEntries = entries
+            })
     }
 }
