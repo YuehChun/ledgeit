@@ -152,6 +152,7 @@ struct ContentView: View {
             .frame(minWidth: 960, minHeight: 640)
             .task {
                 await HeartbeatService.shared.runIfNeeded()
+                await SpendingDiaryService.shared.runIfNeeded()
                 await loadUnreadInsightCount()
                 triggerAutoSync()
                 startSyncTimer()
