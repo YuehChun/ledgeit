@@ -341,5 +341,20 @@ struct DatabaseMigrations {
                 t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
             }
         }
+
+        // MARK: - v17: Spending diary entries table
+        migrator.registerMigration("v17") { db in
+            try db.create(table: "spending_diary_entries") { t in
+                t.primaryKey("id", .text)
+                t.column("date", .text).notNull().unique()
+                t.column("content", .text).notNull().defaults(to: "")
+                t.column("persona_id", .text).notNull().defaults(to: "")
+                t.column("transaction_count", .integer).notNull().defaults(to: 0)
+                t.column("total_spending", .double).notNull().defaults(to: 0)
+                t.column("currency", .text).notNull().defaults(to: "TWD")
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("created_at", .text).defaults(sql: "CURRENT_TIMESTAMP")
+            }
+        }
     }
 }
