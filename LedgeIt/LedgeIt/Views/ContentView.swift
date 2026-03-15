@@ -89,6 +89,10 @@ struct ContentView: View {
                         sidebarRow(l10n.aiAdvisorSidebar, icon: SidebarItem.advisor.icon)
                             .tag(SidebarItem.advisor)
                     }
+
+                    if case .trial = LicenseManager.shared.status {
+                        TrialBannerView(daysRemaining: TrialManager.shared.daysRemaining)
+                    }
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200)
                 .listStyle(.sidebar)
@@ -110,6 +114,7 @@ struct ContentView: View {
                     DashboardView()
                 case .chat:
                     ChatView()
+                        .requiresPro(featureName: "AI Chat", allowReadOnly: true)
                 case .transactions:
                     TransactionListView()
                 case .review:
@@ -122,14 +127,19 @@ struct ContentView: View {
                     StatementsView()
                 case .analysis:
                     AnalysisDashboardView()
+                        .requiresPro(featureName: "Financial Analysis", allowReadOnly: true)
                 case .advisor:
                     AdvisorSettingsView()
+                        .requiresPro(featureName: "AI Advisor Settings")
                 case .goals:
                     GoalsView(onNavigateToAdvisor: { selectedItem = .advisor })
+                        .requiresPro(featureName: "Goal Tracking", allowReadOnly: true)
                 case .insights:
                     InsightsView()
+                        .requiresPro(featureName: "Daily Insights", allowReadOnly: true)
                 case .memory:
                     MemoryManagementView()
+                        .requiresPro(featureName: "Agent Memory", allowReadOnly: true)
                 case .settings:
                     SettingsView(onKeySaved: {
                         triggerAutoSync()
@@ -142,6 +152,7 @@ struct ContentView: View {
             .frame(minWidth: 960, minHeight: 640)
             .task {
                 await HeartbeatService.shared.runIfNeeded()
+                await SpendingDiaryService.shared.runIfNeeded()
                 await loadUnreadInsightCount()
                 triggerAutoSync()
                 startSyncTimer()

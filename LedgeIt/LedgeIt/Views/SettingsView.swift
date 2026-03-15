@@ -38,6 +38,10 @@ struct SettingsView: View {
                 HStack(alignment: .top, spacing: 16) {
                     // Left column: API credentials
                     VStack(spacing: 16) {
+                        SettingsSection(title: "License", icon: "key.fill", color: .purple) {
+                            LicenseSettingsView()
+                        }
+
                         SettingsSection(title: l10n.language, icon: "globe", color: .orange) {
                             VStack(alignment: .leading, spacing: 10) {
                                 Picker(l10n.language, selection: $appLanguage) {
