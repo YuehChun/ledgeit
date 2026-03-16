@@ -90,21 +90,29 @@ Location: `LedgeIt/LedgeIt/Views/Onboarding/FeatureTourView.swift`
 
 ### Language Toggle
 
-- Small globe icon button (🌐) at top-right, next to Skip
-- Toggles between "EN" and "繁中"
-- Changes `@AppStorage("appLanguage")` which propagates to the chat wizard
+- Small globe icon button (SF Symbol `globe`) at top-right, next to Skip
+- Displays current language label: "EN" or "繁中"
+- Toggles `@AppStorage("appLanguage")` between `"en"` and `"zh-Hant"`
 - Default: `Locale.current.language.languageCode?.identifier == "zh" ? "zh-Hant" : "en"`
+- Fallback: if locale detection fails, default to `"en"`
+- OnboardingViewModel reads `appLanguage` on init; if already set by tour, uses that value instead of re-detecting
+
+### Transition Behavior
+
+- **Skip button**: Sets `hasCompletedFeatureTour = true`, immediately transitions to OnboardingChatView
+- **"Get Started →" button** (last card only): Same behavior — sets flag, transitions to OnboardingChatView
+- Transition is a simple `@State` boolean flip in the parent container view (no dismiss/sheet)
 
 ### Animations (SwiftUI)
 
-Each card has a unique entry animation triggered by `onAppear` or page change:
+Each card has a unique entry animation triggered when the card becomes visible (page change). Target: **< 1.5s total per card** including all staggered elements.
 
-1. **Smart Extraction**: Transaction chips fly in from envelope with `.transition(.scale.combined(with: .opacity))` and staggered delays
-2. **Dashboard**: Bar chart bars grow from bottom with `.animation(.spring())` staggered
-3. **Spending Diary**: Calendar page flips, pen writes (offset animation), diary text types in
-4. **AI Advisory**: Chat bubbles slide in alternately from left/right with typing dots
-5. **Financial Analysis**: Pie segments fan out from center with rotation
-6. **Goal Tracking**: Progress bar fills from 0% to 72% with `.animation(.easeOut(duration: 1.0))`
+1. **Smart Extraction**: Transaction chips scale in from envelope with `.transition(.scale.combined(with: .opacity))`, 0.1s stagger between chips, `.spring(response: 0.5, dampingFraction: 0.7)`
+2. **Dashboard**: Bar chart bars grow from bottom with `.spring(response: 0.6, dampingFraction: 0.8)`, 0.08s stagger per bar
+3. **Spending Diary**: Calendar icon fades in, pen slides in (offset animation 0.3s ease-out), diary text opacity fades in after 0.5s delay
+4. **AI Advisory**: Chat bubbles slide in alternately from left/right with `.easeOut(duration: 0.4)`, 0.3s delay between bubbles, typing dots pulse
+5. **Financial Analysis**: Pie segments fan out from center with `.spring(response: 0.6)` rotation, 0.1s stagger per segment
+6. **Goal Tracking**: Progress bar fills from 0% to 72% with `.easeOut(duration: 1.0)`
 
 Animations should be lightweight — SF Symbols + basic shapes + offset/opacity/scale transforms. No Lottie or external dependencies.
 
@@ -112,9 +120,10 @@ Animations should be lightweight — SF Symbols + basic shapes + offset/opacity/
 
 | File | Change |
 |------|--------|
-| `LedgeIt/LedgeIt/Views/Onboarding/FeatureTourView.swift` | Create — new feature tour view |
-| `LedgeIt/LedgeIt/LedgeItApp.swift` or onboarding entry point | Modify — add FeatureTourView before OnboardingChatView |
-| `LedgeIt/LedgeIt/Views/Onboarding/OnboardingViewModel.swift` | Modify — read language from `appLanguage` if already set by tour |
+| `LedgeIt/LedgeIt/Views/Onboarding/FeatureTourView.swift` | Create — feature tour view with 6 cards |
+| `LedgeIt/LedgeIt/Views/Onboarding/FeatureCardView.swift` | Create — individual card component with animation |
+| `LedgeIt/LedgeIt/LedgeItApp.swift` | Modify — in the onboarding conditional, check `hasCompletedFeatureTour`; if false show FeatureTourView, else show OnboardingChatView |
+| `LedgeIt/LedgeIt/Views/Onboarding/OnboardingViewModel.swift` | Modify — on init, read `appLanguage` from UserDefaults; if set (by tour), use it as `selectedLanguage` |
 
 ## Out of Scope
 
