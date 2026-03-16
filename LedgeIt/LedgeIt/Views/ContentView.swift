@@ -42,6 +42,7 @@ struct ContentView: View {
     @AppStorage("appLanguage") private var appLanguage = "en"
     private var l10n: L10n { L10n(appLanguage) }
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("hasCompletedFeatureTour") private var hasCompletedFeatureTour = false
     @State private var autoSyncStatus: String?
     @State private var syncTimer: Timer?
     @State private var unreadInsightCount = 0
@@ -50,8 +51,15 @@ struct ContentView: View {
 
     var body: some View {
         if !hasCompletedOnboarding {
-            OnboardingChatView()
+            if !hasCompletedFeatureTour {
+                FeatureTourView {
+                    hasCompletedFeatureTour = true
+                }
                 .frame(minWidth: 960, minHeight: 640)
+            } else {
+                OnboardingChatView()
+                    .frame(minWidth: 960, minHeight: 640)
+            }
         } else {
             NavigationSplitView {
                 List(selection: $selectedItem) {
