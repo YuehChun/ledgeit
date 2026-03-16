@@ -34,34 +34,17 @@ struct AIProviderSettingsView: View {
             .background(.background.secondary)
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            if LicenseManager.shared.isPro {
-                DisclosureGroup(isExpanded: $modelsExpanded) {
-                    modelAssignmentContent
-                } label: {
-                    Label("Model Assignment", systemImage: "cpu")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.blue)
-                }
-                .padding(14)
-                .background(.background.secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Model Assignment", systemImage: "cpu")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.blue)
-                    Text("Multi-provider model assignment requires Pro.")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    Link("Upgrade to Pro", destination: URL(string: "https://ledgeit.lemonsqueezy.com")!)
-                        .font(.caption)
-                }
-                .padding(14)
-                .background(.background.secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+            DisclosureGroup(isExpanded: $modelsExpanded) {
+                modelAssignmentContent
+            } label: {
+                Label("Model Assignment", systemImage: "cpu")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.blue)
             }
+            .padding(14)
+            .background(.background.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .onAppear(perform: loadState)
         .sheet(isPresented: $showAddEndpointSheet) {

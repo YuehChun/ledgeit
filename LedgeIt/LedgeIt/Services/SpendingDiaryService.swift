@@ -88,8 +88,9 @@ actor SpendingDiaryService {
                 customRiskLevel: customRisk
             )
 
-            let language = Locale.current.language.languageCode?.identifier == "zh"
-                ? "Traditional Chinese"
+            let appLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "en"
+            let language = appLanguage == "zh-Hant"
+                ? "Traditional Chinese (繁體中文)"
                 : "English"
 
             let systemPrompt = Self.buildSystemPrompt(
@@ -148,9 +149,11 @@ actor SpendingDiaryService {
         Personality & tone: \(spendingPhilosophy)
 
         Rules:
-        - Write 200-400 characters in \(language)
+        - CRITICAL: You MUST write ALL text in \(language). Do NOT use any other language.
+        - Write 200-400 characters
         - Narrative style, like a real diary entry
         - Mention specific merchants and amounts naturally in the story
+        - Do NOT guess or assume what a merchant sells or does. Only describe the transaction factually (name + amount + category)
         - End with a brief reflection or feeling
         - If no transactions, write about having a spending-free day
         - Never give direct financial advice

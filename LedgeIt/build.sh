@@ -68,6 +68,11 @@ cat > "${CONTENTS}/Info.plist" << PLIST
 </plist>
 PLIST
 
+# Copy Sparkle framework and fix rpath
+mkdir -p "${CONTENTS}/Frameworks"
+cp -R "${BUILD_DIR}/arm64-apple-macosx/release/Sparkle.framework" "${CONTENTS}/Frameworks/"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${CONTENTS}/MacOS/${APP_NAME}" 2>/dev/null || true
+
 # Copy app icon
 cp "LedgeIt/Resources/AppIcon.icns" "${CONTENTS}/Resources/AppIcon.icns"
 

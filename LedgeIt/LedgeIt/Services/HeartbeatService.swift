@@ -25,7 +25,6 @@ actor HeartbeatService {
     // MARK: - Public API
 
     func runIfNeeded() async {
-        guard await LicenseManager.shared.isPro else { return }
         do {
             try await cleanupOldRecords()
 
