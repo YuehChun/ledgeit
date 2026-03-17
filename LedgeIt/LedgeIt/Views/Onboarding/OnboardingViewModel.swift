@@ -75,7 +75,15 @@ final class OnboardingViewModel: ObservableObject {
         self.currentStep = OnboardingStep(rawValue: savedStep) ?? .welcome
         self.database = database
         self.googleAuthService = googleAuthService
-        self.strings = OnboardingStrings(language: "en")
+        // If feature tour already set a language preference, use it
+        if UserDefaults.standard.object(forKey: "appLanguage") != nil,
+           let tourLanguage = UserDefaults.standard.string(forKey: "appLanguage") {
+            self.selectedLanguage = tourLanguage
+            self.strings = OnboardingStrings(language: tourLanguage)
+            UserDefaults.standard.set(tourLanguage, forKey: "onboardingLanguage")
+        } else {
+            self.strings = OnboardingStrings(language: "en")
+        }
     }
 
     // MARK: - Lifecycle

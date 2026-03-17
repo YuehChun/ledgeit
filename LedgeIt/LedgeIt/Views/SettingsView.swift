@@ -56,6 +56,10 @@ struct SettingsView: View {
                             }
                         }
 
+                        SettingsSection(title: "Diary Persona", icon: "pencil.line", color: .cyan) {
+                            DiaryPersonaSettingsView()
+                        }
+
                         SettingsSection(title: l10n.googleCloudPlatform, icon: "cloud.fill", color: .blue) {
                             VStack(alignment: .leading, spacing: 10) {
                                 FieldGroup(label: l10n.clientID) {
