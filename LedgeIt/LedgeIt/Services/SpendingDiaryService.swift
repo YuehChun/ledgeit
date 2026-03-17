@@ -32,7 +32,7 @@ actor SpendingDiaryService {
     // MARK: - Generation
 
     private func generateMissingEntries() async throws {
-        let dates = lookbackDates(days: 7)
+        let dates = lookbackDates(days: 7).reversed()
         for date in dates {
             await generateEntry(for: date)
         }
@@ -72,38 +72,33 @@ actor SpendingDiaryService {
             let totalSpending = debitTransactions.reduce(0.0) { $0 + $1.amount }
             let primaryCurrency = debitTransactions.first?.currency ?? "TWD"
 
-            let monthStart = String(date.prefix(7)) + "-01"
-            let monthFilter = TransactionFilter(startDate: monthStart, endDate: date)
-            let monthTransactions = try await queryService.getTransactions(filter: monthFilter)
-            let monthTotal = monthTransactions.filter { $0.type == "debit" }.reduce(0.0) { $0 + $1.amount }
-            let daysInMonth = max(1, dayOfMonth(date))
-            let dailyAverage = monthTotal / Double(daysInMonth)
-
-            let personaId = UserDefaults.standard.string(forKey: "advisorPersonaId") ?? "moderate"
-            let customSavings = UserDefaults.standard.double(forKey: "customSavingsTarget")
-            let customRisk = UserDefaults.standard.string(forKey: "customRiskLevel") ?? "medium"
-            let persona = AdvisorPersona.resolve(
-                id: personaId,
-                customSavingsTarget: customSavings > 0 ? customSavings : 0.20,
-                customRiskLevel: customRisk
-            )
+            let diaryPersona = UserDefaults.standard.string(forKey: "diaryPersona") ?? ""
 
             let appLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "en"
             let language = appLanguage == "zh-Hant"
                 ? "Traditional Chinese (繁體中文)"
                 : "English"
 
+            // Load recent diary entries for story continuity
+            let recentDiaries = try await database.db.read { db in
+                try SpendingDiaryEntry
+                    .filter(SpendingDiaryEntry.Columns.status == "completed")
+                    .filter(SpendingDiaryEntry.Columns.date < date)
+                    .order(SpendingDiaryEntry.Columns.date.desc)
+                    .limit(3)
+                    .fetchAll(db)
+            }
+
             let systemPrompt = Self.buildSystemPrompt(
-                spendingPhilosophy: persona.spendingPhilosophy,
+                diaryPersona: diaryPersona,
                 language: language
             )
             let userPrompt = Self.buildUserPrompt(
                 transactions: transactionData,
                 totalSpending: totalSpending,
                 transactionCount: debitTransactions.count,
-                monthToDateTotal: monthTotal,
-                monthDailyAverage: dailyAverage,
-                currency: primaryCurrency
+                currency: primaryCurrency,
+                recentDiaries: recentDiaries
             )
 
             let config = AIProviderConfigStore.load()
@@ -123,7 +118,7 @@ actor SpendingDiaryService {
                             total_spending = ?, currency = ?, status = 'completed'
                         WHERE date = ?
                         """,
-                    arguments: [content, personaId, debitTransactions.count,
+                    arguments: [content, "diary", debitTransactions.count,
                                totalSpending, primaryCurrency, date]
                 )
             }
@@ -141,22 +136,25 @@ actor SpendingDiaryService {
 
     // MARK: - Prompt Builders (static for testability)
 
-    static func buildSystemPrompt(spendingPhilosophy: String, language: String) -> String {
-        """
-        You are a personal spending diary writer. Write diary entries in first-person \
-        perspective as if you are the user reflecting on their day.
+    static func buildSystemPrompt(diaryPersona: String, language: String) -> String {
+        let personaSection = diaryPersona.isEmpty
+            ? "You are a personal spending diary writer."
+            : "You are a personal spending diary writer with the following personality:\n\(diaryPersona)\n\nYou MUST stay in character at all times. Every diary entry must reflect this personality — use relevant metaphors, vocabulary, and perspective from this character."
 
-        Personality & tone: \(spendingPhilosophy)
+        return """
+        \(personaSection)
+
+        Write diary entries in first-person perspective as if you are the user reflecting on their day.
 
         Rules:
         - CRITICAL: You MUST write ALL text in \(language). Do NOT use any other language.
-        - Write 200-400 characters
-        - Narrative style, like a real diary entry
-        - Mention specific merchants and amounts naturally in the story
-        - Do NOT guess or assume what a merchant sells or does. Only describe the transaction factually (name + amount + category)
-        - End with a brief reflection or feeling
-        - If no transactions, write about having a spending-free day
-        - Never give direct financial advice
+        - Write 200-400 characters.
+        - Focus on describing the actual transactions: merchant name, amount, and category.
+        - Do NOT include monthly spending summaries, monthly totals, or daily averages unless the user's persona specifically asks for it.
+        - Do NOT guess or assume what a merchant sells or does. Only describe the transaction factually.
+        - If previous diary entries are provided, reference them naturally to create story continuity (e.g., "just like last Tuesday..." or "unlike yesterday..."). The diary should feel like a continuous personal journal, not isolated daily reports.
+        - If no transactions today, write an encouraging, positive diary entry — a motivational message about the peace of a no-spend day, smart money habits, or the value of saving. Stay in character and be creative.
+        - Never give direct financial advice.
         """
     }
 
@@ -164,29 +162,29 @@ actor SpendingDiaryService {
         transactions: [(merchant: String, amount: Double, category: String)],
         totalSpending: Double,
         transactionCount: Int,
-        monthToDateTotal: Double,
-        monthDailyAverage: Double,
-        currency: String
+        currency: String,
+        recentDiaries: [SpendingDiaryEntry] = []
     ) -> String {
-        if transactions.isEmpty {
-            return """
-                Today's date had no transactions recorded.
-                Month-to-date total: \(currency) \(String(format: "%.0f", monthToDateTotal))
-                Daily average this month: \(currency) \(String(format: "%.0f", monthDailyAverage))
-                """
+        var parts: [String] = []
+
+        // Recent diary context for story continuity
+        if !recentDiaries.isEmpty {
+            let diaryContext = recentDiaries.reversed().map { entry in
+                "[\(entry.date)] \(entry.content)"
+            }.joined(separator: "\n\n")
+            parts.append("Previous diary entries (for continuity — reference these naturally):\n\(diaryContext)")
         }
 
-        let list = transactions.map { "- \($0.merchant) (\($0.category)): \(currency) \(String(format: "%.0f", $0.amount))" }
-            .joined(separator: "\n")
+        // Today's transactions
+        if transactions.isEmpty {
+            parts.append("Today: No transactions recorded.")
+        } else {
+            let list = transactions.map { "- \($0.merchant) (\($0.category)): \(currency) \(String(format: "%.0f", $0.amount))" }
+                .joined(separator: "\n")
+            parts.append("Today's transactions (\(transactionCount)):\n\(list)\n\nTotal: \(currency) \(String(format: "%.0f", totalSpending))")
+        }
 
-        return """
-            Transactions (\(transactionCount)):
-            \(list)
-
-            Total spending: \(currency) \(String(format: "%.0f", totalSpending))
-            Month-to-date total: \(currency) \(String(format: "%.0f", monthToDateTotal))
-            Daily average this month: \(currency) \(String(format: "%.0f", monthDailyAverage))
-            """
+        return parts.joined(separator: "\n\n---\n\n")
     }
 
     // MARK: - Helpers
