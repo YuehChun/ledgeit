@@ -7,6 +7,9 @@ struct DiaryPanelView: View {
     let transactions: [Transaction]
     let bills: [CreditCardBill]
     let diaryEntry: SpendingDiaryEntry?
+    var onRegenerate: ((String) -> Void)? = nil
+
+    @State private var isRegenerating = false
 
     private var dateFormatter: DateFormatter {
         let fmt = DateFormatter()
@@ -108,16 +111,37 @@ struct DiaryPanelView: View {
 
             // Diary content (main focus)
             VStack(alignment: .leading, spacing: 10) {
-                Label("Spending Diary", systemImage: "pencil.line")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                    .textCase(.uppercase)
+                HStack {
+                    Label("Spending Diary", systemImage: "pencil.line")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                        .textCase(.uppercase)
+                    Spacer()
+                    if isRegenerating {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Button {
+                            let fmt = DateFormatter()
+                            fmt.dateFormat = "yyyy-MM-dd"
+                            let dateString = fmt.string(from: selectedDate)
+                            isRegenerating = true
+                            onRegenerate?(dateString)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                                .foregroundStyle(.blue.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Regenerate diary")
+                    }
+                }
 
                 if let entry = diaryEntry, entry.status == "completed" {
                     Text(entry.content)
                         .font(.body)
                         .lineSpacing(6)
-                } else if let entry = diaryEntry, entry.status == "pending" {
+                } else if isRegenerating || (diaryEntry != nil && diaryEntry?.status == "pending") {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -126,7 +150,7 @@ struct DiaryPanelView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else if diaryEntry != nil, diaryEntry?.status == "failed" {
-                    Text("Diary generation failed. It will retry on next launch.")
+                    Text("Diary generation failed. Tap refresh to retry.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
@@ -134,6 +158,9 @@ struct DiaryPanelView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            }
+            .onChange(of: diaryEntry?.content) { _, _ in
+                isRegenerating = false
             }
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

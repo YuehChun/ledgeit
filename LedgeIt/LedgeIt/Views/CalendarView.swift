@@ -104,7 +104,12 @@ struct CalendarView: View {
                     selectedDate: selectedDate,
                     transactions: transactions,
                     bills: bills,
-                    diaryEntry: diaryEntryForSelectedDate
+                    diaryEntry: diaryEntryForSelectedDate,
+                    onRegenerate: { date in
+                        Task {
+                            await SpendingDiaryService.shared.regenerateEntry(for: date)
+                        }
+                    }
                 )
             }
         }

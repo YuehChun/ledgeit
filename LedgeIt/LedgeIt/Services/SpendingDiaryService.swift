@@ -29,6 +29,16 @@ actor SpendingDiaryService {
         }
     }
 
+    func regenerateEntry(for date: String) async {
+        // Delete existing entry and regenerate
+        try? await database.db.write { db in
+            try SpendingDiaryEntry
+                .filter(SpendingDiaryEntry.Columns.date == date)
+                .deleteAll(db)
+        }
+        await generateEntry(for: date)
+    }
+
     // MARK: - Generation
 
     private func generateMissingEntries() async throws {
